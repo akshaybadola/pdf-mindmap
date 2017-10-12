@@ -17,10 +17,12 @@ from Shape import Shape, Shapes
 from LoadSave import load_file, save_file
 
 # Priorities:
-# 1. Partial expansion    DONE
+# 1. Fix children navigation DONE
+# 6. Attach child to new parent
+# 5. If the children are moved from one side to the other, the sides
+#     in family dict and links etc. should reflect so that navigation is seamless
+# 4. By default only directories are visible after populate_tree
 # 2. File Hashes
-# 3. Balanced insert    DONE
-# 4. By default only directories are visible during populate_tree
 
 # 1. Links between nodes other than with a parent child relationship
 #     And a way to show/hide them and navigate between them
@@ -63,6 +65,8 @@ from LoadSave import load_file, save_file
 #       - Also there can be an option to populate the tree with the folder nodes collapsed
 #         i.e., files not showing
 # 24. Cycle items should only cycle between visible items and not hidden ones
+# 25. A status bar at the bottom to notify all the changes
+# 26. Make both the status bar and the search bar children to the top level window
 
 class MyLineEdit(QLineEdit):
     def __init__(self, mmap, *args):
@@ -113,7 +117,10 @@ class MMap(object):
                         'l': ('neg', 'horizontal'), 'r': ('pos', 'horizontal'), 'u': ('neg', 'vertical'), 'd': ('pos', 'vertical'),
                         'horizontal': ('l', 'r'), 'vertical': ('u', 'd')}
         self.inverse_map = {'l': 'r', 'r': 'l', 'u': 'd', 'd': 'u', 'horizontal': ('u', 'd'), 'vertical': ('l', 'r')}
+        self.inverse_orientmap = {'horizontal': 'vertical', 'vertical': 'horizontal',
+                                  'l': 'vertical', 'r': 'vertical', 'u': 'horizontal', 'd': 'horizontal'}
         self.orient_map = {'l': 'horizontal', 'u': 'vertical', 'r': 'horizontal', 'd': 'vertical'}
+        self.other_dirmap = {'l': {'u', 'd', 'r'}, 'r': {'u', 'd', 'l'}, 'u': {'l', 'd', 'r'}, 'd': {'u', 'l', 'r'}}
         self.op_map = {'l': (-200, 0), 'r': (200, 0), 'u': (0, -200), 'd': (0, 200)}
         self.movement = None
         self.cycle_index = 0
@@ -144,13 +151,13 @@ class MMap(object):
             self.root_dir = self.dirtree[0]['name']
             self.populate_tree()
         elif self.filename:
-            try:
-                self.load_data()
-            except Exception:
-                print("Some weird error occured while trying to populate canvas.\nThe program will exit")
-                sys.exit()
+            self.load_data()
+            # except Exception:
+            #     print("Some weird error occured while trying to populate canvas.\nThe program will exit")
+            #     sys.exit()
 
     def save_data(self, filename=None):
+        print ("trying to save data")
         if not filename:
             filename = '/home/joe/test.json'
         data = {}
@@ -162,6 +169,7 @@ class MMap(object):
         save_file(data, filename)
 
     def load_data(self, filename=None):
+        print ("trying to load data")
         if not filename:
             filename = '/home/joe/test.json'
         data = load_file(filename)
@@ -373,26 +381,6 @@ class MMap(object):
         pop_files()
         recurse_()
 
-
-    def check_overlap(self, t_ind):
-        pass
-
-        # self.loading_file = True
-        # data = jsonLoad(self.filename)
-
-        # if data == {}:
-        #     return
-
-        # if 'root_dir' in data:
-        #     self.root_dir = data['root_dir']
-        # if 'default_insert' in data:
-        #     self.default_insert = data['default_insert']
-
-        # self.curZoom = data['zoom']
-
-        # geom = data['root_geometry']
-        # geom = geom.split('+')[0]+'+0+0'
-        # self.root.geometry(geom)
 
     def highlight(self, t_inds):
         op_inds = t_inds
@@ -694,6 +682,7 @@ class MMap(object):
             thought = None
             if isinstance(thoughts[0], Shape):
                 thought = thoughts[0].text_item
+            print (thought.family)
             if thought.family[direction]:
                 # print (thought.family[direction])
                 # can be parent, children or siblings
@@ -723,9 +712,10 @@ class MMap(object):
             self.typing = False
             self.un_highlight()
 
-    def toggle_nav_cycle(self, select, movement=None, item_inds=None, direction=None):
+    def toggle_nav_cycle(self, toggle, movement=None, item_inds=None, direction=None):
         # items are always thoughts
-        if select and not self.cycle_items and item_inds:
+        if toggle and not self.cycle_items and item_inds:
+            print (movement)
             current_item = self.scene.selectedItems()[0]  # guaranteed to be one
             if isinstance(current_item, Thought):
                 item_index = current_item.index
@@ -733,15 +723,18 @@ class MMap(object):
                 item_index = current_item.text_item.index
             sorted_inds = None
             if movement == 'horizontal':
-                sorted_inds = [(ind, self.thoughts[ind].pos().x()) for ind in item_inds if self.thoughts[ind].isVisible()]
+                sorted_inds = [(ind, self.coo_x(ind)) for ind in item_inds if self.thoughts[ind].isVisible()]
                 sorted_inds.sort(key=lambda x: x[1])
+                print (sorted_inds)
             elif movement == 'vertical':
-                sorted_inds = [(ind, self.thoughts[ind].pos().y()) for ind in item_inds if self.thoughts[ind].isVisible()]
+                sorted_inds = [(ind, self.coo_y(ind)) for ind in item_inds if self.thoughts[ind].isVisible()]
                 sorted_inds.sort(key=lambda x: x[1])
             self.cycle_items = [x[0] for x in sorted_inds]
             self.cycle_index = self.cycle_items.index(item_index)
-            self.cycle_between(direction, movement, True)
-        elif not select and self.cycle_items:
+            self.movement = movement
+            if direction:
+                self.cycle_between(direction, movement, True)
+        elif not toggle and self.cycle_items:
             self.cycle_index = 0
             self.cycle_items = []
             
@@ -767,9 +760,13 @@ class MMap(object):
             self.movement = movement
             self.cycle_between(direction, movement, cycle=cycle)
         elif self.movement != movement:
-            self.movement = None
-            self.toggle_nav_cycle(False)
-            return direction
+            if 'parent' in self.thoughts[self.cycle_items[self.cycle_index]].family[direction]:
+                self.movement = None
+                self.cycle_items = []
+                self.toggle_nav_cycle(False)
+                return direction
+            else:
+                return
         # self.dir_map[
         else:
             if direction == self.dir_map[self.movement][0]:
@@ -785,9 +782,14 @@ class MMap(object):
             self.select_one(self.cycle_items[self.cycle_index])
             return None
 
-    # By default only one level, maybe can be extended later
+    # Only one level. For contraction the opposite key should be
+    # pressed.
+    # If it's already expanded, it'll toggle cycle between children if any
+    # on that side instead of siblings.
     def partial_expand(self, event):
         selected = self.get_selected()
+        if not len(selected) == 1:
+            return
         if event.key() == Qt.Key_Left or event.key() == Qt.Key_H:
             direction = 'l'
         elif event.key() == Qt.Key_Right or event.key() == Qt.Key_L:
@@ -800,14 +802,37 @@ class MMap(object):
         for thought in selected:
             if isinstance(thought, Shape):
                 thought = thought.text_item
-            expansion = thought.toggle_expand('t', direction)
-            if 'children' in thought.family[direction]:
-                if thought.family[direction]['children']:
-                    children = map(lambda x: self.thoughts[x], thought.family[direction]['children'])
-                    for child in children:
-                        child.check_hide(False if expansion == 'e' else True)
-                        self.links[thought.index, child.index].setVisible(True if expansion == 'e' else False)
-                    self.hide_thoughts(children, expansion, True)
+            if thought.part_expand[direction] == 'e':
+                if 'children' in thought.family[direction] and thought.family[direction]['children']:
+                    print("expanding", direction, thought.part_expand)
+                    self.select_one(thought.family[direction]['children'])
+                    self.toggle_nav_cycle(True, item_inds=thought.family[direction]['children'],
+                                          movement=self.inverse_orientmap[direction])
+                else:
+                    thought.part_expand[direction] = 'd'
+                    print("not children", direction, thought.part_expand)
+                    self.partial_expand(event)
+            else:
+                if thought.part_expand[self.inverse_map[direction]] == 'e':
+                    expansion = thought.toggle_expand('d', self.inverse_map[direction])
+                    print("hide_children with", expansion, self.inverse_map[direction], thought.part_expand)
+                    self.hide_children(thought, expansion, self.inverse_map[direction])
+                else:
+                    expansion = thought.toggle_expand('e', direction)
+                    print("hide_children with", expansion, direction, thought.part_expand)
+                    self.hide_children(thought, expansion, direction)
+
+
+
+    def hide_children(self, thought, expansion, direction):
+        if 'children' in thought.family[direction]:
+            if thought.family[direction]['children']:
+                print ("trying to hide children in ", direction, expansion)
+                children = map(lambda x: self.thoughts[x], thought.family[direction]['children'])
+                for child in children:
+                    child.check_hide(False if expansion == 'e' else True)
+                    self.links[thought.index, child.index].setVisible(True if expansion == 'e' else False)
+                self.hide_thoughts(children, expansion, True)
                 
     # Must add partial collapse and expand
     def hide_thoughts(self, thoughts, expansion=None, recurse=False):
@@ -840,54 +865,9 @@ class MMap(object):
             pass        # append node (at the same level of hierarchy)
         elif event.keysym == 'u':
             pass                # undo (that's a tough one)
-        # Currently expand isn't cascading
-        # Links are currently destroyed instead of hidden
-        elif event.keysym == 'space':
-            thoughts = self.get_selected()
-            if len(thoughts):
-                self.hide_thoughts(thoughts)
-
-        # WORKING!
-        elif event.keysym == 'p':
-            thoughts = self.get_selected()
-            for thought in thoughts:
-                thought.open_pdf(event)
-
-        # WORKING!
-        elif event.keysym == 'e':
-            thoughts = self.get_selected()
-            if len(thoughts) == 1:
-                thoughts[0].handle_focus(event, focus=True)
-
-        # WORKING!
-        elif event.keysym == 'i':
-            thoughts = self.get_selected()
-            # Add new child only if a single parent is selected for now
-            if len(thoughts) == 1:
-                self.add_new_child(thoughts[0])
-            else:
-                # num_selected = len(self.get_selected())
-                # insert with all as parents right in their middle LOL
-                # coords = reduce(lambda x,y: (x[0]+y[0],x[1]+y[1]),
-                #        [thought.pixLoc for thought in thoughts = self.get_selected()])
-                # mid_point = (float(coords[0])/num_selected, float(coords[1])/num_selected)
-                # self.addThought(coords)
-                # self.adjust_thoughts()
-                # if closest: self.select_one(closest, event)
-                pass
-
-        # WORKING!
-        elif event.keysym == 'Delete' or event.keysym == 'd':
-            selected_indices = [i.index for i in self.get_selected()]
-            for ind in selected_indices:
-                self.removeThought(ind)
-
         elif event.keysym == 'o':
-            # response = askquestion("Save File?", "File modified. Do you want to save the current file?", type="yesnocancel")
             if response == 'yes':
-                # save_file = asksaveasfilename(initialfile=self.filename, confirmoverwrite=True)
                 self.saveData(save_file)
-                # filename = askopenfilename(initialdir=os.path.dirname(self.filename))
             elif response == 'no':
                 pass
                 # filename = askopenfilename()
@@ -899,31 +879,15 @@ class MMap(object):
         # should allow multiple mindmap objects and hence Sheets
         # to exist simultaneously
         elif event.keysym == 'n':
-            # response = askquestion("Save File?", "File modified. Do you want to save the current file?", type="yesnocancel")
             if response == 'yes':
-                # save_file = asksaveasfilename(initialfile=self.filename, confirmoverwrite=True)
                 self.saveData(save_file)
-                # filename = askopenfilename(initialdir=os.path.dirname(self.filename))
             elif response == 'no':
-                # dir = askdirectory(title="Specify the root directory where the files are to be watched")
                 if dir:
                     self.root_dir = dir
-                # Ahh. Here I have to interact with the parent to make a new Sheet object
-                # However previously I wasn't attaching sheet to the mindmap object
-                # Must handle this to include creating new sheet in parallel
                 self.canvas.destroy()
-                # self.mindmap.root_dir = self.root_dir
-                # self.mindmap.fileName = None
-                # self.mindmap.create_new_sheet()
             elif response == 'cancel':
                 pass
-
-        # WORKING!
-        elif event.keysym == 's':
-            # save_file = asksaveasfilename(initialfile=self.filename, confirmoverwrite=True)
-            if save_file:
-                self.saveData(save_file)
-        elif event.keysym == 'S':
+        elif event.keysym == 'S': # save_as
             self.saveData(self.filename)
 
 
@@ -949,32 +913,3 @@ class MMap(object):
             self.closest_overlapping = None
             # Have to attach an arrow from parent to child
             # I think that can be handled on thought level
-
-    # this should also be easier
-    def get_overlapping(self, thought=False, coords=False):
-        if thought:
-            if self.canvas.find_overlapping(thought.x1, thought.y1, thought.x2, thought.y2):
-                tags = [self.canvas.gettags(i) for i in self.canvas.find_overlapping(thought.x1, thought.y1, thought.x2, thought.y2)
-                        if 'mainCircle' in self.canvas.gettags(i)]
-                if len(tags) > 1:
-                    indices = [int(i[1]) for i in tags if int(i[1]) != thought.index]
-                    return indices
-        elif coords:
-            pass
-
-    def draw_arrow(self, ta, tb):
-        a = ta.pixLoc
-        b = tb.pixLoc
-        line_width = 5
-        # a1 = a[0] - line_width/2, a[1] - line_width/2
-        # a2 = a[0] + line_width/2, a[1] + line_width/2
-        # b2 = b[0] + line_width/2, b[1] + line_width/2
-        # b1 = b[0] - line_width/2, b[1] - line_width/2
-        # return [self.canvas.create_line(a1, b1, width=1),
-        #     self.canvas.create_line(a2,b2, width=1),
-        #     self.canvas.create_line(a, b, arrow='last', width=line_width)]
-        return [self.canvas.create_line(a, b, arrow='last', width=line_width, dash=(3, 3))]
-
-    # I have to override for dnd in GraphicsScene
-    #
-    # def dragEnterEvent(self, scene, event):

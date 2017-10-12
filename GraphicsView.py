@@ -124,7 +124,11 @@ class GraphicsView(QGraphicsView):
                 selected = self.scene().selectedItems()
                 self.mmap.select_family(selected)
             if event.key() == Qt.Key_S:
-                self.mmap.save_data()
+                if event.modifiers() & Qt.ControlModifier:
+                    self.mmap.search_toggle()
+                else:
+                    self.mmap.save_data()
+                event.accept()
             if event.key() == Qt.Key_P or event.key() == Qt.Key_Return:  # open_pdf
                 items = self.scene().selectedItems()
                 if len(items) == 1 and (
@@ -154,9 +158,6 @@ class GraphicsView(QGraphicsView):
                     event.accept()
                 else:
                     super(GraphicsView, self).keyPressEvent(event)
-            elif event.key() == Qt.Key_S and (event.modifiers() & Qt.ControlModifier):
-                self.mmap.search_toggle()
-                event.accept()
             elif event.key() == Qt.Key_D:
                 thoughts = self.mmap.get_selected()
                 if thoughts:
@@ -167,7 +168,7 @@ class GraphicsView(QGraphicsView):
                             self.mmap.delete_thought(t.text_item)
             elif event.key() in {Qt.Key_H, Qt.Key_L, Qt.Key_K, Qt.Key_J, Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down}:
                 if event.modifiers() & Qt.ControlModifier:
-                    self.mmap.partial_expand(event)
+                    self.mmap.partial_expand(event)  # or select children in that direction
                 elif event.modifiers() & Qt.ShiftModifier:
                     self.mmap.set_insert_direction(event)
                 else:

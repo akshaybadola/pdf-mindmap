@@ -213,6 +213,7 @@ class Thought(QGraphicsTextItem):
         data['font_attribs'] = self.font_attribs
         data['pdf'] = self.pdf
         data['expand'] = self.expand
+        data['part_expand'] = self.part_expand
         data['hidden'] = self.hidden
         data['hash'] = self.hash
         data['shape'] = self.item_shape
@@ -223,7 +224,10 @@ class Thought(QGraphicsTextItem):
         # May have to amend this later
         family_dict = {}
         for c in ['u', 'd', 'l', 'r']:
-            family_dict[c] = self.family[c][0]
+            if c in self.family.keys():
+                family_dict[c] = {}
+                for k, v in self.family[c].items():
+                    family_dict[c][k] = list(v) if isinstance(v, set) else v
         family_dict['parent'] = self.family['parent']
         family_dict['children'] = list(self.family['children'])
         data['family'] = family_dict
@@ -247,15 +251,15 @@ class Thought(QGraphicsTextItem):
             
         # siblings aren't needed to be added, as they're in self.family[direction]
         # They are restored automatically from data{}
-        self.family = {}
+        self.family = {'u': {}, 'd': {}, 'l': {}, 'r': {},
+                       'parent': None, 'children': set()}
         if 'family' in data:
             for c in ['u', 'd', 'l', 'r']:
-                self.family[c] = data['family'][c]
+                if c in data['family']:
+                    for k, v in data['family'][c].items():
+                        self.family[c][k] = set(v) if isinstance(v, list) else v
             self.family['parent'] = data['family']['parent']
             self.family['children'] = set(data['family']['children'])
-        else:
-            self.family = {'u': {}, 'd': {}, 'l': {}, 'r': {},
-                           'parent': None, 'children': set()}
 
         self.coords = coords
             
@@ -347,9 +351,9 @@ class Thought(QGraphicsTextItem):
             self.restore()
 
     def set_transluscent(self):
-        self.shape_item.setOpacity(0.6)
-        self.icon.setOpacity(0.6)
-        self.setOpacity(0.6)
+        self.shape_item.setOpacity(0.7)
+        self.icon.setOpacity(0.7)
+        self.setOpacity(0.7)
 
     def set_opaque(self):
         self.shape_item.setOpacity(1.0)

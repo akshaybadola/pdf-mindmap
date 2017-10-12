@@ -105,7 +105,7 @@ if __name__ == "__main__":
     grview.resize(1200, 800)
     # grview.horizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
     # grview.verticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)    
-    mm.setSceneRect(0, 0, 1200, 800)
+    # mm.setSceneRect(0, 0, 1200, 800)
     mm.stickyFocus = True
     grview.fitInView(mm.sceneRect(), Qt.KeepAspectRatio)
     grview.show()
