@@ -219,12 +219,13 @@ class Thought(QGraphicsTextItem):
         data['color'] = self.color
         data['side'] = self.side
 
+        # set is not serializable for some reason
+        # May have to amend this later
         family_dict = {}
         for c in ['u', 'd', 'l', 'r']:
-            family_dict[c] = (self.family[c][0], list(self.family[c][1]))
+            family_dict[c] = self.family[c][0]
         family_dict['parent'] = self.family['parent']
         family_dict['children'] = list(self.family['children'])
-        family_dict['orientation'] = {'horizontal': None, 'vertical': None}
         data['family'] = family_dict
 
         return data
@@ -249,11 +250,11 @@ class Thought(QGraphicsTextItem):
         self.family = {}
         if 'family' in data:
             for c in ['u', 'd', 'l', 'r']:
-                self.family[c] = [data['family'][c][0], set(data['family'][c][1])]
+                self.family[c] = data['family'][c]
             self.family['parent'] = data['family']['parent']
             self.family['children'] = set(data['family']['children'])
         else:
-            self.family = {'u': [None, set()], 'd': [None, set()], 'l': [None, set()], 'r': [None, set()],
+            self.family = {'u': {}, 'd': {}, 'l': {}, 'r': {},
                            'parent': None, 'children': set()}
 
         self.coords = coords
@@ -304,20 +305,37 @@ class Thought(QGraphicsTextItem):
         else:
             self.expand = 'e'
 
+        if 'part_expand' in data:
+            self.part_expand = data['part_expand']
+        else:
+            self.part_expand = {'u': 'e', 'd': 'e', 'l': 'e', 'r': 'e'}
+
         if 'color' in data:
             self.color = data['color']
         else:
             self.color = "red"
 
-    def toggle_expand(self, expand):
-        if expand == 't':
-            if self.expand == 'e':
-                self.expand = 'd'
+    def toggle_expand(self, expand, direction=None):
+        if not direction:
+            if expand == 't':
+                if self.expand == 'e':
+                    self.expand = 'd'
+                else:
+                    self.expand = 'e'
             else:
-                self.expand = 'e'
+                self.expand = expand
+            for i in self.part_expand.keys():
+                self.part_expand[i] = self.expand
+            return self.expand
         else:
-            self.expand = expand
-        return self.expand
+            if expand == 't':
+                if self.part_expand[direction] == 'e':
+                    self.part_expand[direction] = 'd'
+                else:
+                    self.part_expand[direction] = 'e'
+            else:
+                self.part_expand[direction] = expand
+            return self.part_expand[direction]
 
     def check_hide(self, hidden):
         if self.old_hidden != hidden:

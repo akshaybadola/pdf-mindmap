@@ -133,9 +133,6 @@ class GraphicsView(QGraphicsView):
                     event.accept()
                 else:
                     super(GraphicsView, self).keyPressEvent(event)
-            # elif event.key() == Qt.Key_L:  # linking, though not working
-            #     self.mmap.try_add_link()
-            #     event.accept()
             elif event.key() == Qt.Key_Space and event.modifiers() & Qt.ShiftModifier:  # recursive expansion
                 self.mmap.hide_thoughts(self.mmap.get_selected(), 'e', recurse=True)
                 event.accept()
@@ -169,7 +166,9 @@ class GraphicsView(QGraphicsView):
                         elif isinstance(t, Shape):
                             self.mmap.delete_thought(t.text_item)
             elif event.key() in {Qt.Key_H, Qt.Key_L, Qt.Key_K, Qt.Key_J, Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down}:
-                if event.modifiers() & Qt.ShiftModifier:
+                if event.modifiers() & Qt.ControlModifier:
+                    self.mmap.partial_expand(event)
+                elif event.modifiers() & Qt.ShiftModifier:
                     self.mmap.set_insert_direction(event)
                 else:
                     self.mmap.key_navigate(event)

@@ -3,7 +3,7 @@ import math
 import threading
 import sys
 import operator
-from functools import reduce
+from functools import reduce, singledispatch
 
 from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QBrush, QPainterPath, QPainter, QColor, QPen, QPixmap, QRadialGradient
@@ -15,6 +15,12 @@ from Thought import Thought
 from Link import Arrow, Link
 from Shape import Shape, Shapes
 from LoadSave import load_file, save_file
+
+# Priorities:
+# 1. Partial expansion    DONE
+# 2. File Hashes
+# 3. Balanced insert    DONE
+# 4. By default only directories are visible during populate_tree
 
 # 1. Links between nodes other than with a parent child relationship
 #     And a way to show/hide them and navigate between them
@@ -123,7 +129,15 @@ class MMap(object):
         self.search_widget.widget()
         self.search_widget.setVisible(False)
         self.arrows = []
-        
+        self.coo_x = singledispatch(self.coo_x)
+        self.coo_x.register(int, self._coo_x_int)
+        self.coo_x.register(Shape, self._coo_x_shape)
+        self.coo_x.register(Thought, self._coo_x_thought)
+        self.coo_y = singledispatch(self.coo_y)
+        self.coo_y.register(int, self._coo_y_int)
+        self.coo_y.register(Shape, self._coo_y_shape)
+        self.coo_y.register(Thought, self._coo_y_thought)
+
         if self.dirtree:
             # tt_map == tree_thought_map
             self.tt_map = {}
@@ -180,10 +194,11 @@ class MMap(object):
         for i in thought.family['children']:
             self.thoughts[i].family['parent'] = None
             for c in ['u', 'd', 'l', 'r']:
-                if self.thoughts[i].family[c][0] == 'siblings':
-                    self.thoughts[i].family[c] = [None, set()]
-                if self.thoughts[i].family[c][0] == 'parent':
-                    self.thoughts[i].family[c] = [None, set()]
+                if 'siblings' in self.thoughts[i].family[c]:
+                    self.thoughts[i].family[c].pop('siblings')
+                if 'parent' in self.thoughts[i].family[c]:
+                    self.thoughts[i].family[c].pop('parent')
+
         links_to_remove = [l for l in self.links.keys() if ind in l]
         for l in links_to_remove:
             self.scene.removeItem(self.links[l])
@@ -241,12 +256,47 @@ class MMap(object):
         self.select_one(self.cur_index)
         self.thoughts[self.cur_index].set_editable()
 
-    def coo_x(self, t):
+    def coo_x(self, tt):
+        return
+
+    def coo_y(self, tt):
+        return
+
+    def _coo_x_int(self, t_ind):
+        return self.thoughts[t_ind].shape_item.pos().x()
+
+    def _coo_x_shape(self, t):
         return t.pos().x()
 
-    def coo_y(self, t):
+    def _coo_x_thought(self, t):
+        return t.shape_item.pos().x()
+
+    def _coo_y_int(self, t_ind):
+        return self.thoughts[t_ind].shape_item.pos().y()
+
+    def _coo_y_shape(self, t):
         return t.pos().y()
 
+    def _coo_y_thought(self, t):
+        return t.shape_item.pos().y()
+
+    # @singledispatch
+    # def coo_x(self, t):
+    #     return t.pos().x()
+
+    # @coo_x.register(int)
+    # def _(self, t_ind):
+    #     return self.thoughts[t_ind].shape_item.pos().x()
+
+    # @singledispatch
+    # def coo_y(self, t):
+    #     return t.pos().y()
+
+    # @coo_y.register(int)
+    # def _(self, t_ind):
+    #     return self.thoughts[t_ind].shape_item.pos().y()
+
+    # do i really need these? If t's parent is not scene, then yes
     def coo_mx(self, t):
         return t.mapToScene(t.pos()).x()
 
@@ -392,83 +442,122 @@ class MMap(object):
             parent = parent.text_item
             shape_item = parent.shape_item
 
+        def child_thoughts(parent, c_inds):
+            return map(lambda x: self.thoughts[x], parent.family[direction]['children'])
+
         if not direction:
             direction = parent.insert_dir
-        print (direction)
+        pos = None
         dir_map = self.dir_map
         axis, orientation = dir_map[direction]
         displacement = 200
         buffer = 20
-        if parent.family[direction][0]:
-            print (direction, axis, orientation)
-            if parent.family[direction][0] == 'parent':  # or parent.family[direction][0] == 'siblings':
-                return
+        print (direction, parent.family)
+        if 'parent' in parent.family[direction]:  # [0] == 'parent':  # or parent.family[direction][0] == 'siblings':
+            return
+        x = self.coo_x(shape_item)
+        y = self.coo_y(shape_item)
+        if 'children' in parent.family[direction]:
+            children = parent.family[direction]['children']
+            on_side = None
+            child_axis = None
+            if direction in {'l', 'r'}:
+                on_side = [1 if self.coo_y(c) < y else 0 for c in child_thoughts(parent, children)]
+            elif direction in {'u', 'd'}:
+                on_side = [1 if self.coo_x(c) < x else 0 for c in child_thoughts(parent, children)]
+            if sum(on_side) < len(on_side)/2:
+                child_axis = 'neg'
             else:
-                children = parent.family[direction][1]
-                if direction == 'l':
-                    lowest = self.lowest_thought(children)
-                    pos = QPointF(self.coo_mx(shape_item) - displacement, lowest + buffer)
-                elif direction == 'r':
-                    lowest = self.lowest_thought(children)
-                    pos = QPointF(self.coo_mx(shape_item) + displacement +
-                                  shape_item.boundingRect().getRect()[2], lowest + buffer)
-                elif direction == 'u':
-                    rightmost = self.rightmost(children)
-                    pos = QPointF(rightmost + buffer, self.coo_my(shape_item) - displacement)
-                elif direction == 'd':
-                    rightmost = self.rightmost(children)
-                    pos = QPointF(rightmost + buffer,
-                                  self.coo_my(shape_item) + displacement + shape_item.boundingRect().getRect()[3])
+                child_axis = 'pos'
+            
+            lco = self.last_child_ordinate(children, 'horizontal' if orientation == 'vertical' else 'vertical', child_axis)
+
+            if direction == 'l':
+                if child_axis == 'neg':
+                    pos = QPointF(x - displacement, lco - buffer)
+                else:
+                    pos = QPointF(x - displacement, lco + buffer)
+            elif direction == 'r':
+                if child_axis == 'neg':
+                    pos = QPointF(x + displacement +
+                                  shape_item.boundingRect().getRect()[2], lco - buffer)
+                else:
+                    pos = QPointF(x + displacement +
+                                  shape_item.boundingRect().getRect()[2], lco + buffer)
+            elif direction == 'u':
+                if child_axis == 'neg':
+                    pos = QPointF(lco - buffer, y - displacement)
+                else:
+                    pos = QPointF(lco + buffer, y - displacement)
+            elif direction == 'd':
+                if child_axis == 'neg':
+                    pos = QPointF(lco - buffer, y + displacement + shape_item.boundingRect().getRect()[3])
+                else:
+                    pos = QPointF(lco + buffer,
+                                  y + displacement + shape_item.boundingRect().getRect()[3])
         else:
             if orientation == 'horizontal':
                 if axis == 'neg':  # l
-                    pos = QPointF(self.coo_mx(shape_item) - displacement, self.coo_my(shape_item))
+                    pos = QPointF(x - displacement, y)
                 else:  # r
-                    pos = QPointF(self.coo_mx(shape_item) +
-                                  displacement + shape_item.boundingRect().getRect()[2], self.coo_my(shape_item))
+                    pos = QPointF(x + displacement + shape_item.boundingRect().getRect()[2], y)
             else:
                 if axis == 'neg':  # u
-                    pos = QPointF(self.coo_mx(shape_item), self.coo_my(shape_item) - displacement)
+                    pos = QPointF(x, y - displacement)
                 else:  # d
-                    pos = QPointF(self.coo_mx(shape_item),
-                                  self.coo_my(shape_item) + displacement + shape_item.boundingRect().getRect()[3])
+                    pos = QPointF(x, y + displacement + shape_item.boundingRect().getRect()[3])
 
         data.update({'side': direction})
         self.add_thought(pos, text="child thought", shape=shape, data=data)
-        parent.family[direction][0] = 'children'
-        parent.family[direction][1].add(self.cur_index)
-        parent.family['children'].add(self.cur_index)
+        if 'children' in parent.family[direction]:         # update parent direction
+            parent.family[direction]['children'].add(self.cur_index)
+        else:
+            parent.family[direction].update({'children': {self.cur_index}})
+        parent.family['children'].add(self.cur_index)        # update parent's children
 
         c_t = self.thoughts[self.cur_index]
         idir = self.inverse_map[direction]
-        orient = self.orient_map[direction]
         iorient = self.inverse_map[orientation]
         c_t.family['parent'] = parent.index
-        c_t.family[idir][0] = 'parent'
-        c_t.family[idir][1].add(parent.index)
-        c_t.family[iorient[0]][0] = 'siblings'
-        c_t.family[iorient[1]][0] = 'siblings'
-        c_t.family[iorient[0]][1] = parent.family[direction][1]
-        c_t.family[iorient[1]][1] = parent.family[direction][1]
-        for i in parent.family[direction][1]:
-            self.thoughts[i].family[iorient[0]][1] = parent.family[direction][1]
-            self.thoughts[i].family[iorient[1]][1] = parent.family[direction][1]
+        c_t.family[idir] = {'parent': parent.index}
+        c_t.family[iorient[0]] = {'siblings': parent.family[direction]['children']}
+        c_t.family[iorient[1]] = {'siblings': parent.family[direction]['children']}
+        for i in parent.family[direction]['children']:
+            self.thoughts[i].family[iorient[0]]['siblings'] = parent.family[direction]['children']
+            self.thoughts[i].family[iorient[1]]['siblings'] = parent.family[direction]['children']
         self.add_link(parent.index, self.cur_index, direction=direction)
-        self.adjust_thoughts()
+        # self.adjust_thoughts()
 
 
-    def lowest_thought(self, t_inds):
-        y_axis = [(t_ind, self.thoughts[t_ind].shape_item.pos().y())
-                  for t_ind in t_inds]
-        retval = max(y_axis, key=lambda x: x[1])
-        return retval[1] + self.thoughts[retval[0]].shape_item.boundingRect().getRect()[3]
+    def last_child_ordinate(self, t_inds, orientation, axis):
+        if orientation == 'horizontal':
+            coo = self.coo_x
+        else:
+            coo = self.coo_y
+        if axis == 'pos':
+            func = max
+            op = operator.add
+        else:
+            func = min
+            op = operator.sub
+
+        axes = [(t_ind, coo(t_ind)) for t_ind in t_inds]
+        retval = func(axes, key=lambda x: x[1])
+        return op(retval[1], self.thoughts[retval[0]].shape_item.boundingRect().getRect()[
+            2 if orientation == 'horizontal' else 3])
+
+    # def lowest_thought(self, t_inds):
+    #     y_axis = [(t_ind, self.coo_y(t_ind))
+    #               for t_ind in t_inds]
+    #     retval = max(y_axis, key=lambda x: x[1])
+    #     return retval[1] + self.thoughts[retval[0]].shape_item.boundingRect().getRect()[3]
 
 
-    def rightmost(self, t_inds):
-        y_axis = [(t_ind, self.thoughts[t_ind].shape_item.pos().x())
-                  for t_ind in t_inds]
-        retval = max(y_axis, key=lambda x: x[1])
-        return retval[1] + self.thoughts[retval[0]].shape_item.boundingRect().getRect()[2]
+    # def rightmost(self, t_inds):
+    #     x_axis = [(t_ind, self.coo_x(t_ind))
+    #               for t_ind in t_inds]
+    #     retval = max(x_axis, key=lambda x: x[1])
+    #     return retval[1] + self.thoughts[retval[0]].shape_item.boundingRect().getRect()[2]
     
     def select_one(self, t_ind):
         self.unselect_all()
@@ -482,24 +571,30 @@ class MMap(object):
         # get collisions
         # Always between some new child and some other node
         # Which direction is the child added, move away until no collision?
-        # Collision from the other side, move that also away. No, that causes trouble
-        #
-        # perhaps collisions can be dependent on types like collisions while insertion
-        # and collisions while moving.
-        # So far only dealing with collisions while insertion
-        # Hypothesis is that it only collides with a single item
+        # Collision from the other side, move that also away. No, that causes trouble (Why?)
         t = self.thoughts[self.cur_index]
         collisions = t.shape_item.collidingItems(Qt.IntersectsItemBoundingRect)
         colls = reduce(lambda x, y: x | y, [isinstance(c, Shape) for c in collisions])
-        if colls:
-            if t.side in {'l', 'r'}:
-                dir = 'u'
-                coo = self.coo_my
-            else:
-                coo = self.coo_mx
-                dir = 'l'
+        # move colls in the same direction as t was going, just a little bit
+        # move self and family in opposite direction
+        # - If colls in same family? Everything is one big family.
+        # Colls cannot be between siblings by the nature of placement, unless moved by hand
+        # This creates a problem. To what depth do you recurse while adjusting a tree?
+        # - The solution like the rest of my implmentation lies in effective local data accumulation
+        # - There should be dict which keeps track of subtrees, i.e.,
+        #    - All thoughts are zero order subtrees
+        #    - All parents and children are first order subtrees
+        #    - All according to depth, locally
+        #    - Higher order subtrees can be built with lower order subtrees with DP
+        #    - Then collisions can be detected with subtree overlap
+        #       - That is, if the collision is within the same first order subtree, then only adjust that
+        #       - If collision is between two first order subtrees, only need to modify them
+        #       - If one first order subtree collides with multiple first order subtrees, it gets more
+        #         complicated.
 
-            t_others = list(t.family[dir][1])
+        if colls:
+            # This code will have to change substantially
+            t_others = set.union(*[i for i in t.family[dir].values()])
             if len(t_others) == 1:
                 # single child probably collided in the same direction it was added in
                 # adjust in some direction yourself, no siblings
@@ -561,32 +656,21 @@ class MMap(object):
     def key_navigate(self, event):
         # A lot of the code below may be redundant
         direction = None
-        ind = 0
-        func = None
-        if event.modifiers() & Qt.ShiftModifier:
-            ignore_relatives = True
-        else:
-            ignore_relatives = False
-
         if event.key() == Qt.Key_Escape:
             self.unselect_all()
             self.toggle_nav_cycle(False)
             return
         elif event.key() == Qt.Key_Left or event.key() == Qt.Key_H:
             direction = 'l'
-            func = min
             ind = 0
         elif event.key() == Qt.Key_Right or event.key() == Qt.Key_L:
             direction = 'r'
-            func = max
             ind = 0
         elif event.key() == Qt.Key_Up or event.key() == Qt.Key_K:
             direction = 'u'
-            func = min
             ind = 1
         elif event.key() == Qt.Key_Down or event.key() == Qt.Key_J:
             direction = 'd'
-            func = max
             ind = 1
         movement = None
         if direction in {'l', 'r'}:
@@ -610,17 +694,17 @@ class MMap(object):
             thought = None
             if isinstance(thoughts[0], Shape):
                 thought = thoughts[0].text_item
-            if thought.family[direction][0]:
-                # print (thought.family[direction][0], thought.family[direction][1])
+            if thought.family[direction]:
+                # print (thought.family[direction])
                 # can be parent, children or siblings
-                if thought.family[direction][0] == 'parent':
-                    self.select_one(thought.family[direction][1])
+                if 'parent' in thought.family[direction]:
+                    self.select_one(thought.family[direction]['parent'])
                     event.accept()
-                elif thought.family[direction][0] == 'children':
-                    self.select_one(thought.family[direction][1])
-                elif thought.family[direction][0] == 'siblings':
+                elif 'siblings' in thought.family[direction]:
                     print(thought.text, thought.family)
-                    self.toggle_nav_cycle(True, movement, thought.family[direction][1], direction)
+                    self.toggle_nav_cycle(True, movement, thought.family[direction]['siblings'], direction)
+                elif 'children' in thought.family[direction]:
+                    self.select_one(thought.family[direction]['children'])
         event.accept()
 
     def search_toggle(self):
@@ -701,6 +785,30 @@ class MMap(object):
             self.select_one(self.cycle_items[self.cycle_index])
             return None
 
+    # By default only one level, maybe can be extended later
+    def partial_expand(self, event):
+        selected = self.get_selected()
+        if event.key() == Qt.Key_Left or event.key() == Qt.Key_H:
+            direction = 'l'
+        elif event.key() == Qt.Key_Right or event.key() == Qt.Key_L:
+            direction = 'r'
+        elif event.key() == Qt.Key_Up or event.key() == Qt.Key_K:
+            direction = 'u'
+        elif event.key() == Qt.Key_Down or event.key() == Qt.Key_J:
+            direction = 'd'
+
+        for thought in selected:
+            if isinstance(thought, Shape):
+                thought = thought.text_item
+            expansion = thought.toggle_expand('t', direction)
+            if 'children' in thought.family[direction]:
+                if thought.family[direction]['children']:
+                    children = map(lambda x: self.thoughts[x], thought.family[direction]['children'])
+                    for child in children:
+                        child.check_hide(False if expansion == 'e' else True)
+                        self.links[thought.index, child.index].setVisible(True if expansion == 'e' else False)
+                    self.hide_thoughts(children, expansion, True)
+                
     # Must add partial collapse and expand
     def hide_thoughts(self, thoughts, expansion=None, recurse=False):
         thoughts = [t if isinstance(t, Thought) else t.text_item for t in thoughts]
@@ -870,74 +978,3 @@ class MMap(object):
     # I have to override for dnd in GraphicsScene
     #
     # def dragEnterEvent(self, scene, event):
-        
-         
-    def get_node_on_side(self, t, side='', ignore_relatives=False):
-        ind = None
-        if not side:
-            return
-        else:
-            if side == 'l':
-                op = operator.lt
-                ind = 0
-            if side == 'd':
-                op = operator.gt
-                ind = 1
-            elif side == 'r':
-                op = operator.gt
-                ind = 0
-            elif side == 'u':
-                op = operator.lt
-                ind = 1
-
-            if ind == 0:
-                coo = self.coo_x
-            elif ind == 1:
-                coo = self.coo_y
-
-            # pside = None
-            # if side == 'u':
-            #     pside = 'd'
-            # elif side == 'd':
-            #     pside = 'u'
-            # elif side == 'r':
-            #     pside = 'l'
-            # elif side == 'l':
-            #     pside = 'r'
-
-            # Mind the op
-            # I don't think I need to convert this to a list
-            # children_on_side = list(filter(lambda x: op(coo(x), coo(t)), [self.thoughts[child] for child in t.family['children']]))
-            # parents_on_side = list(filter(lambda x: op(coo(x), coo(t)), [self.thoughts[par] for par in t.family['parents']]))
-            # children_on_side = t.family['children'][side]
-            # parents_on_side = t.family['parents']  # currently it's a single parent LOL
-            
-            # What is in that direction? Cache it? Perhaps with my original plan
-            # In each direction there can be either parents or children but not both
-            # You can only go from a parent to child or child to parent or between
-            # siblings
-            # We can have links in between and navigate among them but they're
-            # invisible normally
-            # There can only be one parent
-            # There can be three cases, sibling, parent, children
-            # If there's parents, then only can there be siblings
-
-            # This should be, what exists in which direction
-            # If something exists in that direction, what is it?
-            if t.family['parent']:
-                p_ind, p_side = list(t.family['parent'])[0]
-                siblings_on_side = self.thoughts[p_ind].family['children'][p_side]
-                relatives = [self.thoughts[s] for s in siblings_on_side]
-            # if there are no children on left, find the closest node on side
-            if not relatives or ignore_relatives:
-                on_side = list(filter(lambda x: op(coo(x), coo(t)), [node for node in self.thoughts.values()]))
-            else:              # get the closest relative on that side
-                on_side = relatives
-
-            print(relatives, on_side)
-            return on_side
-            # if on_side:        # If there's something on the side
-            #     closest = self.thoughts[
-            #         min([(node, self.dist(t, node)) for node in on_side],
-            #             key=lambda x: x[1])[0]]
-            #     return closest  # it's an index
