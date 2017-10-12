@@ -120,9 +120,9 @@ class GraphicsView(QGraphicsView):
         elif not self.mmap.typing:  # All the key events handled by the scene go here
             if event.key() == Qt.Key_A and event.modifiers() & Qt.ControlModifier:
                 self.mmap.select_all()
-            if event.key() == Qt.Key_N and event.modifiers() & Qt.ShiftModifier:
+            if event.key() == Qt.Key_N and event.modifiers() & Qt.ShiftModifier:  # maybe change this later
                 selected = self.scene().selectedItems()
-                self.mmap.select_family(selected)
+                self.mmap.select_descendants(selected)
             if event.key() == Qt.Key_S:
                 if event.modifiers() & Qt.ControlModifier:
                     self.mmap.search_toggle()

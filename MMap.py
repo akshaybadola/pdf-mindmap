@@ -17,12 +17,18 @@ from Shape import Shape, Shapes
 from LoadSave import load_file, save_file
 
 # Priorities:
-# 1. Fix children navigation DONE
-# 6. Attach child to new parent
+# 1. Select all siblings DONE
+# 6. Attach child to new parent (Right click drag, reattaches selected nodes and descendants.
+#     Use blur to show that they can be attached now, and remove blur to attach, place close
+#     coming from the same direction
 # 5. If the children are moved from one side to the other, the sides
 #     in family dict and links etc. should reflect so that navigation is seamless
 # 4. By default only directories are visible after populate_tree
-# 2. File Hashes
+# 2. File Hashes and directory watching 
+# 25. A status bar at the bottom to notify all the changes
+#      -  Both the status bar and the search bar should be children to the top level window
+# 18. *A collapsed node should have an indicator in which direction it has children
+#        But yes, partial expansion in a direction should be there
 
 # 1. Links between nodes other than with a parent child relationship
 #     And a way to show/hide them and navigate between them
@@ -30,43 +36,28 @@ from LoadSave import load_file, save_file
 #      - Colors other than red are there now.
 # 3. Children should snap close to each other
 # 4. An overall method to adjust everything according to some rules
-# 5. *Attach a child? Let's say add a child or move from one parent to other
-#      Again a similar arrow can be drawn
 # 6. Also a way to move children from one side to another (with animation)
-# 7. And they should also move in the center
-# 8. insert direction should be changeable, (by the means of an animated arrow)
-#      - Arrow is there but not animated.
+# 8. Arrow for insert direction change
 # 9. Panning, zoom (wtf is that and how to handle wrt saves and restore)
 # 10. Animation while expansion and contraction
-# 11. *File hashes and directory watching and mapping
 # 14. *Should insert new nodes away from other nodes as well and not
 #       just nodes in family (minimize overlap while insertion)
 #       - In fact it can be that the childrens' position is fixed just like
 #         the thoughts' size is fixed corresponding to the text that they have
 #       - I'm thinking of an animation while reordering siblings, like in tabs
-# 15. *Implementation of a "balanced" insert policy:
-#        - can be done in case of siblings by inserting on both sides
-#        of siblings and not just one side
-# 16. There should be a way to select a node and all its descendants
-#       to make moving easier. (or just collapse and move?)
 # 17. Splines
-# 18. *A collapsed node should have an indicator in which direction it has children
-#        But yes, partial expansion in a direction should be there
 # 19. Perhaps expand with just the movement? and expand and collapse on demand?
 # 20. Better looking nodes. Currently they look like shit
 #       - They actually look fairly ok now. I have to add animations however.
 # 21. Append a node to the current level of hierarchy
 #      - I think that can be accomplished fairly easily as the node would have to be
 #        some other node's child
-# 22. Allow insertion of children in the siblings' direction as well and insert new sibling
-#       perhaps in the middle
 # 23. There should be an option to show the directory tree k-level deep, i.e., show
 #       till kth-level collapsed and the rest expanded.
 #       - Also there can be an option to populate the tree with the folder nodes collapsed
 #         i.e., files not showing
-# 24. Cycle items should only cycle between visible items and not hidden ones
-# 25. A status bar at the bottom to notify all the changes
-# 26. Make both the status bar and the search bar children to the top level window
+# 24. Cycle items should only cycle between visible items and not hidden ones (Is this needed now?)
+
 
 class MyLineEdit(QLineEdit):
     def __init__(self, mmap, *args):
@@ -237,7 +228,7 @@ class MMap(object):
     def select(self, ind):
         self.thoughts[ind].shape_item.setSelected(True)
     
-    def select_family(self, thoughts):
+    def select_descendants(self, thoughts):
         recurse_ = []
         for t in thoughts:
             if isinstance(t, Shape):
@@ -248,14 +239,24 @@ class MMap(object):
             if t.family['children']:
                 recurse_ += [self.thoughts[i] for i in t.family['children']]
         if recurse_:
-            self.select_family(recurse_)
+            self.select_descendants(recurse_)
         else:
             return
         
     def select_all(self):
-        for ts in self.thoughts.values():
-            ts.shape_item.setSelected(True)
-
+        selected = self.scene.selectedItems()
+        if not selected:
+            for ts in self.thoughts.values():
+                ts.shape_item.setSelected(True)
+        else:
+            if len(selected) == 1:
+                thought = selected[0].text_item
+                for c in ['u', 'd', 'l', 'r']:
+                    if 'siblings' in thought.family[c]:
+                        for s in thought.family[c]['siblings']:
+                            self.select(s)
+                        
+            
     # links also?
     def unselect_all(self):
         self.scene.clearSelection()
@@ -756,6 +757,7 @@ class MMap(object):
 
 
     def cycle_between(self, direction, movement=None, cycle=False):
+        print (self.movement, movement)
         if not self.movement:
             self.movement = movement
             self.cycle_between(direction, movement, cycle=cycle)
@@ -802,32 +804,52 @@ class MMap(object):
         for thought in selected:
             if isinstance(thought, Shape):
                 thought = thought.text_item
-            if thought.part_expand[direction] == 'e':
-                if 'children' in thought.family[direction] and thought.family[direction]['children']:
-                    print("expanding", direction, thought.part_expand)
-                    self.select_one(thought.family[direction]['children'])
-                    self.toggle_nav_cycle(True, item_inds=thought.family[direction]['children'],
-                                          movement=self.inverse_orientmap[direction])
+            if 'siblings' in thought.family[direction]:  # or 'siblings' in thought.family[self.inverse_map[direction]]:
+                if thought.part_expand[direction] == 'e':
+                    if 'children' in thought.family[direction] and thought.family[direction]['children']:
+                        self.select_one(thought.family[direction]['children'])
+                        self.toggle_nav_cycle(False)
+                        self.toggle_nav_cycle(True, item_inds=thought.family[direction]['children'],
+                                              movement=self.inverse_orientmap[direction])
+                    else:
+                        print("not children, collapsing_opposite", direction, thought.part_expand)
+                        thought.part_expand[direction] = 'd'
+                        self.collapse_indir(thought, self.inverse_map[direction])
+                elif 'children' in thought.family[direction]:
+                    thought.part_expand[direction] = 'e'
+                    self.expand_indir(thought, direction)
                 else:
-                    thought.part_expand[direction] = 'd'
-                    print("not children", direction, thought.part_expand)
-                    self.partial_expand(event)
+                    thought.part_expand[self.inverse_map[direction]] = 'd'
+                    self.collapse_indir(thought, self.inverse_map[direction])
             else:
                 if thought.part_expand[self.inverse_map[direction]] == 'e':
-                    expansion = thought.toggle_expand('d', self.inverse_map[direction])
-                    print("hide_children with", expansion, self.inverse_map[direction], thought.part_expand)
-                    self.hide_children(thought, expansion, self.inverse_map[direction])
+                    if 'children' in thought.family[self.inverse_map[direction]]:
+                        thought.toggle_expand('d', self.inverse_map[direction])
+                        self.collapse_indir(thought, self.inverse_map[direction])
+                    else:
+                        thought.toggle_expand('e', direction)
+                        self.expand_indir(thought, direction)
                 else:
-                    expansion = thought.toggle_expand('e', direction)
-                    print("hide_children with", expansion, direction, thought.part_expand)
-                    self.hide_children(thought, expansion, direction)
+                    if 'children' in thought.family[direction]:
+                        thought.toggle_expand('e', direction)
+                        self.expand_indir(thought, direction)
+                    else:
+                        thought.part_expand[self.inverse_map[direction]] = 'd'
+                        self.collapse_indir(thought, self.inverse_map[direction])
 
+    def collapse_indir(self, thought, direction):
+        expansion = thought.toggle_expand('d', direction)
+        print("collapsing", direction, thought.part_expand)
+        self.hide_children(thought, expansion, direction)
 
+    def expand_indir(self, thought, direction):
+        expansion = thought.toggle_expand('e', direction)
+        print("expanding", direction, thought.part_expand)
+        self.hide_children(thought, expansion, direction)
 
     def hide_children(self, thought, expansion, direction):
         if 'children' in thought.family[direction]:
             if thought.family[direction]['children']:
-                print ("trying to hide children in ", direction, expansion)
                 children = map(lambda x: self.thoughts[x], thought.family[direction]['children'])
                 for child in children:
                     child.check_hide(False if expansion == 'e' else True)
