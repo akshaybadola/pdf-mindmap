@@ -2,7 +2,7 @@ import sys
 
 import numpy as np
 
-from PyQt5.QtCore import Qt, QRectF, QPointF
+from PyQt5.QtCore import Qt, QRectF, QPointF, QSize, QSizeF
 from PyQt5.QtGui import QBrush, QPainterPath, QPainter, QColor, QPen, QPixmap, QRadialGradient, QMouseEvent, QKeyEvent
 from PyQt5.QtWidgets import (QGraphicsEllipseItem, QApplication, QGraphicsView, QGraphicsRectItem,
                              QGraphicsScene, QGraphicsItem, QGraphicsTextItem, QGraphicsPixmapItem, QGraphicsDropShadowEffect)
@@ -20,6 +20,7 @@ Shapes = {'ellipse': 1, 'rectangle': 2, 'rounded_rectangle': 3, 'circle': 4}
 class Shape(QGraphicsEllipseItem):
     def __init__(self, text_item, color, *args):
         self.text_item = text_item
+        self.index = self.text_item.index
         self.color = color
         super(Shape, self).__init__(self.boundingRect())
         self.setFlags(
@@ -28,6 +29,8 @@ class Shape(QGraphicsEllipseItem):
         self.prepareGeometryChange()
         self.set_editable = self.text_item.set_editable
         self.open_pdf = self.text_item.open_pdf
+        self.setZValue(-1)
+        self.text_item.mmap.links_zvalue(self.text_item, -2)
 
     def get_link_coords(self):
         rect = self.boundingRect().getRect()
@@ -81,16 +84,33 @@ class Shape(QGraphicsEllipseItem):
         #     self.text_item.mmap.update_links()
         if change == QGraphicsItem.ItemSelectedChange:
             if value:
-                self.setZValue(1)
+                self.setZValue(2)
                 self.make_brush('dark')
                 self.text_item.mmap.links_zvalue(self.text_item, 1)
             else:
                 self.setZValue(-1)
                 self.make_brush('regular')
-                self.text_item.mmap.links_zvalue(self.text_item, -1)
+                self.text_item.mmap.links_zvalue(self.text_item, -2)
         self.update()
         return super().itemChange(change, value)
         
+    def to_pixmap(self):
+        rect = self.boundingRect()
+        pixmap = QPixmap(rect.size().toSize())
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.translate(-rect.topLeft())
+        self.paint(painter, None, None)
+        painter.save()
+        painter.setPen(QPen(Qt.black))
+        painter.drawText(QPointF(10,10),  self.text_item.text)
+        painter.drawPixmap(QPointF(-20,-20), self.text_item.pdf_icon(), QRectF(-8,-8,40,40)) # QRectF(-8,-8,16,16), self.text_item.pdf_icon())
+        painter.restore()
+        painter.end()
+        return pixmap
+
 # Must create similar classes like these
 class Ellipse(Shape):
     def __init__(self, text_item, color, *args):

@@ -17,18 +17,22 @@ from Shape import Shape, Shapes
 from LoadSave import load_file, save_file
 
 # Priorities:
-# 1. Select all siblings DONE
+# 1. Is save_data not saving pos() for items or are they being added by add_thought
+#     so pos() is overwritten?
 # 6. Attach child to new parent (Right click drag, reattaches selected nodes and descendants.
 #     Use blur to show that they can be attached now, and remove blur to attach, place close
 #     coming from the same direction
 # 5. If the children are moved from one side to the other, the sides
 #     in family dict and links etc. should reflect so that navigation is seamless
 # 4. By default only directories are visible after populate_tree
-# 2. File Hashes and directory watching 
+# 2. File Hashes and directory watching
 # 25. A status bar at the bottom to notify all the changes
 #      -  Both the status bar and the search bar should be children to the top level window
-# 18. *A collapsed node should have an indicator in which direction it has children
+# 18. A collapsed node should have an indicator in which direction it has children
 #        But yes, partial expansion in a direction should be there
+# b) Add a child to each pdf node which by default is always collapsed but
+#     expands on demand(with animation) as the node is selected and shows
+#     the description (which may or may not be there) for that file
 
 # 1. Links between nodes other than with a parent child relationship
 #     And a way to show/hide them and navigate between them
@@ -57,6 +61,8 @@ from LoadSave import load_file, save_file
 #       - Also there can be an option to populate the tree with the folder nodes collapsed
 #         i.e., files not showing
 # 24. Cycle items should only cycle between visible items and not hidden ones (Is this needed now?)
+# 25. Tabular format for all the pdfs (or selected pdfs or families) for mendeley like environment
+#       in QtQuick
 
 
 class MyLineEdit(QLineEdit):
@@ -126,7 +132,14 @@ class MMap(object):
         self.search_widget = self.scene.addWidget(MyLineEdit(self))
         self.search_widget.widget()
         self.search_widget.setVisible(False)
+
         self.arrows = []
+        self.pix_items = []
+        self.thought_positions = []
+        self.dragging_items = []
+        self.dragging_transluscent = False
+        self.target_item = None
+
         self.coo_x = singledispatch(self.coo_x)
         self.coo_x.register(int, self._coo_x_int)
         self.coo_x.register(Shape, self._coo_x_shape)
@@ -135,6 +148,9 @@ class MMap(object):
         self.coo_y.register(int, self._coo_y_int)
         self.coo_y.register(Shape, self._coo_y_shape)
         self.coo_y.register(Thought, self._coo_y_thought)
+        self.coo = singledispatch(self.coo)
+        self.coo.register(Thought, self._coo_thought)
+        self.coo.register(Shape, self._coo_shape)
 
         if self.dirtree:
             # tt_map == tree_thought_map
@@ -288,6 +304,15 @@ class MMap(object):
 
     def _coo_y_thought(self, t):
         return t.shape_item.pos().y()
+
+    def coo(self, tt):
+        return
+
+    def _coo_thought(self, t):
+        return t.shape_item.pos()
+
+    def _coo_shape(self, t):
+        return t.pos()
 
     # @singledispatch
     # def coo_x(self, t):
@@ -518,6 +543,78 @@ class MMap(object):
         # self.adjust_thoughts()
 
 
+    def to_pixmap(self, items):
+        for item in items:
+            p = self.scene.addPixmap(item.to_pixmap())
+            p.setPos(item.pos())
+            p.setFlag(QGraphicsItem.ItemIsSelectable, False)
+            p.setFlag(QGraphicsItem.ItemIsMovable, False)
+            self.pix_items.append(p)
+
+    def try_attach_children(self, event, items=None, drag_state='begin'):
+        if drag_state == 'begin':
+            self.drag_begin_pos = event.pos()
+            self.dragging_items = items
+            for t in self.dragging_items:
+                self.thought_positions.append(self.coo(t))
+                self.to_pixmap(self.dragging_items)
+        elif drag_state == 'dragging':
+            if self.dragging_items:
+                if not self.dragging_transluscent:
+                    self.dragging_transluscent = True
+                    for di in self.dragging_items:
+                        di.text_item.set_transluscent(0.6)
+                totalRect = reduce(operator.or_, (i.sceneBoundingRect() for i in self.dragging_items))
+                intersection = self.scene.items(totalRect, Qt.IntersectsItemBoundingRect)
+                items = list(filter(lambda x: isinstance(x, Shape) and x not in self.dragging_items, intersection))
+                if not items:
+                    for arrow in self.arrows:
+                        self.scene.removeItem(arrow)
+                    self.arrows = []
+                    self.target_item = None
+                elif items and self.target_item != items[0]:
+                    for arrow in self.arrows:
+                        self.scene.removeItem(arrow)
+                    self.arrows = []
+                    self.target_item = None
+                    self.target_item = items[0]
+                    for di in self.dragging_items:
+                        a = Link(di, items[0], QColor(80, 90, 100, 255), collide=True)
+                        self.scene.addItem(a)
+                        self.arrows.append(a)
+                        self.scene.update()
+        elif drag_state == 'end':
+            if not self.target_item:
+                for i, tpos in enumerate(self.thought_positions):
+                    self.dragging_items[i].setPos(tpos)
+                    self.dragging_items[i].text_item.set_opaque()
+                self.dragging_items = []
+                for p in self.pix_items:
+                    self.scene.removeItem(p)
+                self.pix_items = []
+                for a in self.arrows:
+                    self.scene.removeItem(a)
+                self.arrows = []
+                self.target_item = None
+                self.thought_positions = []
+            else:
+                for p in self.pix_items:
+                    self.scene.removeItem(p)
+                self.pix_items = []
+                for a in self.arrows:
+                    self.scene.removeItem(a)
+                self.arrows = []
+                self.thought_positions = []
+                for item in self.dragging_items:
+                    item.text_item.set_opaque()
+                    self.update_parent(item.index, self.target_item.index)
+                self.target_item = None
+                self.scene.update()
+                    
+    def update_parent(self, c_ind, p_ind):
+        pass
+
+           
     def last_child_ordinate(self, t_inds, orientation, axis):
         if orientation == 'horizontal':
             coo = self.coo_x
@@ -630,7 +727,7 @@ class MMap(object):
             self.scene.addItem(arrow)
             item.insert_dir = direction  # for now
         
-
+    # This function is not used
     def remove_arrows(self):
         if self.arrows:
             direction = self.arrows[0].direction

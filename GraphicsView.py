@@ -24,6 +24,8 @@ class GraphicsView(QGraphicsView):
         self.setDragMode(QGraphicsView.RubberBandDrag)
         self._isPanning = False
         self._mousePressed = False
+        self._mousePressedRight = False
+        self._positions = []
         self.setRenderHint(QPainter.Antialiasing)
         self.mmap = mmap
         # Zoom Factor
@@ -62,6 +64,14 @@ class GraphicsView(QGraphicsView):
             self.setCursor(Qt.ClosedHandCursor)
             self._dragPos = event.pos()
             event.accept()
+        elif event.button() == Qt.RightButton:
+            self._selected = self.mmap.get_selected()
+            self._mousePressedRight = True
+            self._dragPos = self.mapToScene(event.pos())
+            if self._selected:
+                self.mmap.try_attach_children(event, self._selected, 'begin')
+            self._positions = [s.pos() for s in self._selected]
+            event.accept()
         elif self.itemAt(event.pos()):
             item = self.itemAt(event.pos())
             if isinstance(item, Thought):
@@ -75,7 +85,16 @@ class GraphicsView(QGraphicsView):
             super(GraphicsView, self).mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self._mousePressed and event.modifiers() & Qt.ShiftModifier:
+        if self._mousePressedRight:
+            print(self.mapToScene(event.pos()), event.pos().x(), event.pos().y(), self._dragPos.x(), self._dragPos.y())
+            len(self._positions)
+            diff = self.mapToScene(event.pos()) - self._dragPos
+            if (self._selected):
+                for i, item in enumerate(self._selected):
+                    item.setPos(self._positions[i].x() + diff.x(), self._positions[i].y() + diff.y())
+                self.mmap.try_attach_children(event, None, 'dragging')
+            event.accept()
+        if self._mousePressed and event.modifiers() & Qt.ShiftModifier:  # and event.button == Qt.LeftButton:
             newPos = event.pos()
             diff = newPos - self._dragPos
             self._dragPos = newPos
@@ -90,7 +109,11 @@ class GraphicsView(QGraphicsView):
         if isinstance(item, QGraphicsPixmapItem):
             item.open_pdf()
             self._mousePressed = False
-        if event.button() == Qt.LeftButton and event.modifiers() & Qt.ShiftModifier:
+        if event.button() == Qt.RightButton and self._mousePressedRight:
+           self.scene().clearSelection()
+           self._mousePressedRight = False
+           self.mmap.try_attach_children(event, None, 'end')
+        elif event.button() == Qt.LeftButton and event.modifiers() & Qt.ShiftModifier:
             self._mousePressed = False
             self.setCursor(Qt.OpenHandCursor)
         else:

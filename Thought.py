@@ -151,6 +151,9 @@ class Thought(QGraphicsTextItem):
         # self.icon.hoverLeaveEvent = self.icon_hover_event
         # self.icon.mouseReleaseEvent = self.icon_release_event
 
+    def to_pixmap(self):
+        self.shape_item.to_pixmap()
+
     def handle_icon(self):
         if self.pdf:
             self.icon.setCursor(Qt.PointingHandCursor)
@@ -350,15 +353,18 @@ class Thought(QGraphicsTextItem):
         else:
             self.restore()
 
-    def set_transluscent(self):
-        self.shape_item.setOpacity(0.7)
-        self.icon.setOpacity(0.7)
-        self.setOpacity(0.7)
+    def set_transluscent(self, opacity=0.7):
+        self.shape_item.setOpacity(opacity)
+        self.icon.setOpacity(opacity)
+        self.setOpacity(opacity)
 
     def set_opaque(self):
         self.shape_item.setOpacity(1.0)
         self.icon.setOpacity(1.0)
         self.setOpacity(1.0)
+
+    def update_parent(self, p_ind):
+        pass
 
     # What about the links in the two functions below?
     # Must handle them

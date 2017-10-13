@@ -12,10 +12,11 @@ from Thought import Thought
 
 # start_item, end_item are Thought instances
 class Arrow(QGraphicsLineItem):
-    def __init__(self, item, direction, parent=None, scene=None):
+    def __init__(self, item, direction, parent=None, scene=None, collide=False):
         super(Arrow, self).__init__(parent)
         self.arrowHead = QPolygonF()
         self.arrowHead = QPolygonF()
+        self.collide = collide
         if isinstance(item, Thought):
             self.item = item.shape_item
         else:
@@ -94,30 +95,44 @@ class Arrow(QGraphicsLineItem):
 
 
 class Link(QGraphicsLineItem):
-    def __init__(self, start_item, end_item, color, parent=None, scene=None, direction=None):
+    def __init__(self, start_item, end_item, color, parent=None, scene=None, direction=None, collide=False):
         super(Link, self).__init__(parent)
         self.arrowHead = QPolygonF()
-        self.start_item = start_item.shape_item  # actual boundary is of shape_item
-        self.end_item = end_item.shape_item
+        self.collide = collide
+        if isinstance(start_item, Thought):
+            self.start_item = start_item.shape_item  # actual boundary is of shape_item
+        else:
+            self.start_item = start_item
+        if isinstance(end_item, Thought):
+            self.end_item = end_item.shape_item
+        else:
+            self.end_item = end_item
         self.setColor(color)
         if not direction:
             self.direction = 'l'
         else:
             self.direction = direction
-        self.setPen(QPen(self.color, 2, Qt.SolidLine, Qt.RoundCap,
-                         Qt.RoundJoin))
+        if self.collide:
+            self.setPen(QPen(self.color, 10, Qt.DotLine, Qt.RoundCap,
+                             Qt.RoundJoin))
+        else:
+            self.setPen(QPen(self.color, 2, Qt.SolidLine, Qt.RoundCap,
+                             Qt.RoundJoin))
      
     def setColor(self, color):
-        if color == "red":
-            base_color = [255, 0, 0, 255]
-        elif color == "blue":
-            base_color = [20, 100, 255, 255]
-        elif color == "yellow":
-            base_color = [240, 200, 0, 255]
-        elif color == "green":
-            base_color = [0, 240, 0, 255]
-        self.color = QColor(*base_color)
-
+        if isinstance(color, str):
+            if color == "red":
+                base_color = [255, 0, 0, 255]
+            elif color == "blue":
+                base_color = [20, 100, 255, 255]
+            elif color == "yellow":
+                base_color = [240, 200, 0, 255]
+            elif color == "green":
+                base_color = [0, 240, 0, 255]
+            self.color = QColor(*base_color)
+        else:
+            self.color = color
+            
     def boundingRect(self):
         extra = (self.pen().width() + 20) / 2.0
         p1 = self.line().p1()
@@ -137,8 +152,9 @@ class Link(QGraphicsLineItem):
     #     self.update()
 
     def paint(self, painter, option, widget=None):
-        if (self.start_item.collidesWithItem(self.end_item)):
-            return
+        if not self.collide:
+            if (self.start_item.collidesWithItem(self.end_item)):
+                return
         painter.setRenderHint(QPainter.Antialiasing)
         si = self.start_item
         ei = self.end_item
@@ -193,24 +209,27 @@ class Link(QGraphicsLineItem):
 
         # bottom point of first thought and top point of second thought
         # set according to direction from parent to child
-        si_link_coords = si.get_link_coords()
-        ei_link_coords = ei.get_link_coords()
-        si_rect = si.boundingRect().getRect()
-        if self.direction == 'l':
-            # big hack, because in this case the coords were wrong, simply wrong
-            # no idea why
-            st = self.mapFromItem(si, si_link_coords[0][0], si_link_coords[1][1] + si_rect[3]/2)
-            en = self.mapFromItem(ei, ei_link_coords[2][0], ei_link_coords[2][1])
-        elif self.direction == 'r':
-            st = self.mapFromItem(si, si_link_coords[2][0], si_link_coords[2][1])
-            en = self.mapFromItem(ei, ei_link_coords[0][0], ei_link_coords[0][1])
-        elif self.direction == 'u':
-            st = self.mapFromItem(si, si_link_coords[1][0], si_link_coords[1][1])
-            en = self.mapFromItem(ei, ei_link_coords[3][0], ei_link_coords[3][1])
-        elif self.direction == 'd':
-            st = self.mapFromItem(si, si_link_coords[3][0], si_link_coords[3][1])
-            en = self.mapFromItem(ei, ei_link_coords[1][0], ei_link_coords[1][1])
-
+        if not self.collide:
+            si_link_coords = si.get_link_coords()
+            ei_link_coords = ei.get_link_coords()
+            si_rect = si.boundingRect().getRect()
+            if self.direction == 'l':
+                # big hack, because in this case the coords were wrong, simply wrong
+                # no idea why
+                st = self.mapFromItem(si, si_link_coords[0][0], si_link_coords[1][1] + si_rect[3]/2)
+                en = self.mapFromItem(ei, ei_link_coords[2][0], ei_link_coords[2][1])
+            elif self.direction == 'r':
+                st = self.mapFromItem(si, si_link_coords[2][0], si_link_coords[2][1])
+                en = self.mapFromItem(ei, ei_link_coords[0][0], ei_link_coords[0][1])
+            elif self.direction == 'u':
+                st = self.mapFromItem(si, si_link_coords[1][0], si_link_coords[1][1])
+                en = self.mapFromItem(ei, ei_link_coords[3][0], ei_link_coords[3][1])
+            elif self.direction == 'd':
+                st = self.mapFromItem(si, si_link_coords[3][0], si_link_coords[3][1])
+                en = self.mapFromItem(ei, ei_link_coords[1][0], ei_link_coords[1][1])
+        else:
+            st = self.mapFromItem(si, si.boundingRect().center())
+            en = self.mapFromItem(ei, ei.boundingRect().center())
         line = self.setLine(QLineF(en, st))
         line = self.line()
         
