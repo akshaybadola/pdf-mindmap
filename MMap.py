@@ -16,12 +16,16 @@ from Link import Arrow, Link
 from Shape import Shape, Shapes
 from LoadSave import load_file, save_file
 
+# Almost everything is done now, except for minor updates that will be required to various
+# aspects. But basic functionality is all working except Expansion, Contraction By Mouse
+# 
 # Priorities:
 # 1. Left, Right, Up, Down are also bound to scrolling the GraphicsView
 #     - Must change those to something else.
-# 3. Positioning currently while adding a new child or replacing a child is not very good.
+# 3. Alignment while re-placing children is incorrect if added anywhere, either modify place_child
+#     or write a new function for it.
 # 2. Navigation and expansion although they work fine, sometimes the keystrokes don't
-#     do what is expected of them.
+#     do what is expected of them (require more than one keypress)
 # 4. Expansion, contraction by mouse.
 #     - Hidden and expand flags are not correctly working w.r.t. navigation (though mostly working)
 #     - Mouse expand will only work if there's an indicator that there's something to expand
@@ -29,6 +33,7 @@ from LoadSave import load_file, save_file
 #       expand is 'd'
 #     - Also change 'd' to 'c' for collapse (change dicts to enums?)
 # 2. File Hashes and directory watching
+
 # 4. Basic emacs like key-bindings for the text editor
 # 3. Do I need node resize?
 # 25. A status bar at the bottom to notify all the changes
@@ -750,18 +755,19 @@ class MMap(object):
             t_pind = t.family['parent']
             if t_pind:
                 t_par = self.thoughts[t.family['parent']]
+                d_0, d_1 = self.inverse_map[self.orient_map[t.side]]
+                # First remove sibling
+                for sib in t_par.family[t.side]['children']:
+                    if 'siblings' in self.thoughts[sib].family[d_0] and t.index in self.thoughts[sib].family[d_0]['siblings']:
+                        self.thoughts[sib].family[d_0]['siblings'].remove(t.index)
+                    if 'siblings' in self.thoughts[sib].family[d_1] and t.index in self.thoughts[sib].family[d_1]['siblings']:
+                        self.thoughts[sib].family[d_1]['siblings'].remove(t.index)
+
                 t_par.family['children'].remove(t.index)
                 t_par.family[t.side]['children'].remove(t.index)
-                d_0, d_1 = self.inverse_map[self.orient_map[t.side]]
-                for sib in t_par.family[t.side]['children']:
-                    if 'siblings' in self.thoughts[sib].family[d_0]:
-                        self.thoughts[sib].family[d_0]['siblings'].remove(t.index)
-                    if 'siblings' in self.thoughts[sib].family[d_1]:
-                        self.thoughts[sib].family[d_1]['siblings'].remove(t.index)
-                    self.fix_family(self.thoughts[sib])
+                self.fix_family(self.thoughts[sib])
                 self.scene.removeItem(self.links[(t_par.index, t.index)])
                 self.links.pop((t_par.index, t.index))
-                self.fix_family(self.thoughts[t_pind])
             # Add to new family.  At addition the positions of
             # all children of attached nodes should be updated.
             t.family['parent'] = target.index
@@ -784,6 +790,7 @@ class MMap(object):
             else:
                 target.family[direction]['children'] = {t.index}
             t.family[idir] = {'parent': target.index}
+            self.fix_place_children(self.thoughts[ind])
             self.add_link(target.index, t.index, direction)
             self.update_siblings(target, t, direction)
             
@@ -792,21 +799,27 @@ class MMap(object):
         # avoid adding self to siblings, although in most other cases self is sibling
         if 'children' in par.family[direction] and len(par.family[direction]['children']) > 1:
             if 'children' not in child.family[iorient[0]]:
-                child.family[iorient[0]] = {'siblings': par.family[direction]['children']}
+                child.family[iorient[0]].update({'siblings': None})
             if 'children' not in child.family[iorient[1]]:
-                child.family[iorient[1]] = {'siblings': par.family[direction]['children']}
+                child.family[iorient[1]].update({'siblings': None})
             for i in par.family[direction]['children']:
-                self.thoughts[i].family[iorient[0]]['siblings'] = par.family[direction]['children']
-                self.thoughts[i].family[iorient[1]]['siblings'] = par.family[direction]['children']
+                self.thoughts[i].family[iorient[0]]['siblings'] = par.family[direction]['children'].copy()
+                self.thoughts[i].family[iorient[1]]['siblings'] = par.family[direction]['children'].copy()
+
+    def fix_place_children(self, parent):
+        for c in ['u', 'd', 'l', 'r']:
+            if 'children' in parent.family[c]:
+                self.replace_children(parent, c, c)
+                for child in parent.family[c]['children']:
+                    self.fix_place_children(self.thoughts[child])
 
     # Currently it replaces children from one direction to opposite
     # But I'd like to replace it from any direction to any other feasible direction
-    def replace_children(self, par, f_dir, to_dir):
+    def replace_children(self, par, f_dir, to_dir):  # , children=None):
         if f_dir == to_dir:
-            children = par.family[f_dir]['children']
-            par.family[f_dir].pop('children')
+            children = par.family[f_dir].pop('children')
             for c_ind in children:
-                pos = self.place_child(par, to_dir)
+                pos = self.place_child(par, f_dir)
                 self.thoughts[c_ind].shape_item.setPos(pos)
                 if 'children' in par.family[f_dir]:
                     par.family[f_dir]['children'].add(c_ind)
