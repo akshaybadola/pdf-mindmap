@@ -19,19 +19,15 @@ from LoadSave import load_file, save_file
 # Priorities:
 # 1. Left, Right, Up, Down are also bound to scrolling the GraphicsView
 #     - Must change those to something else.
-# 6. Attach child to new parent
-#     - Graphics is working, only have to update parent and children dicts
-#     - links are not drawn on the residual coords
+# 3. Positioning currently while adding a new child or replacing a child is not very good.
+# 2. Navigation and expansion although they work fine, sometimes the keystrokes don't
+#     do what is expected of them.
 # 4. Expansion, contraction by mouse.
 #     - Hidden and expand flags are not correctly working w.r.t. navigation (though mostly working)
 #     - Mouse expand will only work if there's an indicator that there's something to expand
 #     - Expansion more robust with checks such that if all directions are 'd', then
 #       expand is 'd'
 #     - Also change 'd' to 'c' for collapse (change dicts to enums?)
-# 5. If the children are moved from one side to the other, the sides
-#     in family dict and links etc. should reflect so that navigation is seamless
-#     - But then the direction would also have to change. The change should be
-#       sudden.
 # 2. File Hashes and directory watching
 # 4. Basic emacs like key-bindings for the text editor
 # 3. Do I need node resize?
@@ -239,10 +235,11 @@ class MMap(object):
             for child in children:
                 child = self.thoughts[child]
                 for c in ['u', 'd', 'l', 'r']:
-                    print (c, child.family)
                     if 'siblings' in child.family[c]:
                         if ind in child.family[c]['siblings']:
                             child.family[c]['siblings'].remove(ind)
+                self.fix_family(child)
+            self.fix_family(par)
                 
         thought.remove()
         self.thoughts.pop(ind)
@@ -618,12 +615,13 @@ class MMap(object):
         self.update_siblings(parent, c_t, direction)
         self.add_link(parent.index, self.cur_index, direction=direction)
         # self.adjust_thoughts()
-        # The following code updates siblings, now replaced by the function
-        # c_t.family[iorient[0]] = {'siblings': parent.family[direction]['children']}
-        # c_t.family[iorient[1]] = {'siblings': parent.family[direction]['children']}
-        # for i in parent.family[direction]['children']:
-        #     self.thoughts[i].family[iorient[0]]['siblings'] = parent.family[direction]['children']
-        #     self.thoughts[i].family[iorient[1]]['siblings'] = parent.family[direction]['children']
+
+    def fix_family(self, thought):
+        for c in ['l', 'u', 'r', 'd']:
+            keys = list(thought.family[c].keys())
+            for k in keys:
+                if not thought.family[c][k]:
+                    thought.family[c].pop(k)
 
     def to_pixmap(self, items):
         for item in items:
@@ -712,8 +710,7 @@ class MMap(object):
         return ['l', 'u', 'r', 'd'][
             min([(j, self.dist((x_, y_), tlc[j])) for j in range(4)], key=lambda x: x[1])[0]]
 
-    # crashes if you try to add child to same parent in different direction
-    # If the parent is collapsed the children aren't added. Intersection!
+    # Links remain drawn needlessly
     def update_parent(self, children, target):
         # if there are multiple famillies, find the highest member in each
         # What if I only attach the parent and not the children?
@@ -761,26 +758,26 @@ class MMap(object):
                         self.thoughts[sib].family[d_0]['siblings'].remove(t.index)
                     if 'siblings' in self.thoughts[sib].family[d_1]:
                         self.thoughts[sib].family[d_1]['siblings'].remove(t.index)
+                    self.fix_family(self.thoughts[sib])
                 self.scene.removeItem(self.links[(t_par.index, t.index)])
                 self.links.pop((t_par.index, t.index))
-
-            # Add to new family.  At addition all positions are
-            # overridden if the direction of the children requires a
-            # change for any of the top level nodes
+                self.fix_family(self.thoughts[t_pind])
+            # Add to new family.  At addition the positions of
+            # all children of attached nodes should be updated.
             t.family['parent'] = target.index
-            # t.family['children'].intersection_update(indices_full)
             t.side = direction
             if 'children' in t.family[idir]:
-                self.replace_children(t, idir)
-            # temp = t.family[idir]
+                self.replace_children(t, idir, direction)
+
             # clean the thought
             for c in ['u', 'd', 'l', 'r']:
-                # if 'children' in t.family[c]:
-                #     t.family[c]['children'].intersection_update(indices_full)
+                if 'children' in t.family[c] and (c != direction):
+                    self.replace_children(t, c, c)
                 if 'siblings' in t.family[c]:
                     t.family[c].pop('siblings')
                 if 'parent' in t.family[c]:
                     t.family[c].pop('parent')
+            self.fix_family(t)
             target.family['children'].add(t.index)
             if 'children' in target.family[direction]:
                 target.family[direction]['children'].add(t.index)
@@ -793,7 +790,7 @@ class MMap(object):
     def update_siblings(self, par, child, direction):
         iorient = self.inverse_map[self.orient_map[direction]]
         # avoid adding self to siblings, although in most other cases self is sibling
-        if 'children' in par.family[direction] and len(par.family[direction]) > 1:
+        if 'children' in par.family[direction] and len(par.family[direction]['children']) > 1:
             if 'children' not in child.family[iorient[0]]:
                 child.family[iorient[0]] = {'siblings': par.family[direction]['children']}
             if 'children' not in child.family[iorient[1]]:
@@ -804,30 +801,45 @@ class MMap(object):
 
     # Currently it replaces children from one direction to opposite
     # But I'd like to replace it from any direction to any other feasible direction
-    def replace_children(self, par, idir):
-        direction = self.inverse_map[idir]
-        iorient = self.inverse_map[self.orient_map[direction]]
-        for c_ind in par.family[idir]['children']:
-            self.thoughts[c_ind].family[idir] = {'parent': par.index}
-            if 'parent' in self.thoughts[c_ind].family[idir]:
-                self.thoughts[c_ind].family[direction] = {}
-            if 'children' in par.family[direction]:
-                par.family[direction]['children'].add(c_ind)
-            else:
-                par.family[direction] = {'children': {c_ind}}
-            pos = self.place_child(par, direction)
-            self.thoughts[c_ind].shape_item.setPos(pos)
-            self.thoughts[c_ind].side = direction
-            self.scene.removeItem(self.links[(par.index, c_ind)])
-            self.add_link(par.index, c_ind, direction)
-            # This overwriting quality may not work if there are children in
-            # one of these directions. Maybe I should add a check
-            self.thoughts[c_ind].family[iorient[0]] = {'siblings': par.family[direction]['children']}
-            self.thoughts[c_ind].family[iorient[1]] = {'siblings': par.family[direction]['children']}
-            if 'children' in self.thoughts[c_ind].family[idir]:
-                self.replace_children(self.thoughts[c_ind], idir)
-        par.family[idir].pop('children')
-           
+    def replace_children(self, par, f_dir, to_dir):
+        if f_dir == to_dir:
+            children = par.family[f_dir]['children']
+            par.family[f_dir].pop('children')
+            for c_ind in children:
+                pos = self.place_child(par, to_dir)
+                self.thoughts[c_ind].shape_item.setPos(pos)
+                if 'children' in par.family[f_dir]:
+                    par.family[f_dir]['children'].add(c_ind)
+                else:
+                    par.family[f_dir]['children'] = {c_ind}
+            return
+        else:
+            direction = to_dir
+            idir = f_dir
+            iorient = self.inverse_map[self.orient_map[direction]]
+            for c_ind in par.family[idir]['children']:
+                self.thoughts[c_ind].family[idir] = {'parent': par.index}
+                if 'parent' in self.thoughts[c_ind].family[idir]:
+                    self.thoughts[c_ind].family[direction] = {}
+                if 'children' in par.family[direction]:
+                    par.family[direction]['children'].add(c_ind)
+                else:
+                    par.family[direction] = {'children': {c_ind}}
+                pos = self.place_child(par, direction)
+                self.thoughts[c_ind].shape_item.setPos(pos)
+                self.thoughts[c_ind].side = direction
+                self.scene.removeItem(self.links[(par.index, c_ind)])
+                self.add_link(par.index, c_ind, direction)
+                self.check_hide_links(c_ind)
+                if 'children' not in self.thoughts[c_ind].family[iorient[0]]:
+                    self.thoughts[c_ind].family[iorient[0]] = {'siblings': par.family[direction]['children']}
+                if 'children' not in self.thoughts[c_ind].family[iorient[1]]:
+                    self.thoughts[c_ind].family[iorient[1]] = {'siblings': par.family[direction]['children']}
+                if 'children' in self.thoughts[c_ind].family[idir]:
+                    self.replace_children(self.thoughts[c_ind], idir, direction)
+            par.family[idir].pop('children')
+            self.fix_family(par)
+            
     def last_child_ordinate(self, t_inds, orientation, axis):
         if orientation == 'horizontal':
             coo = self.coo_x
@@ -1159,6 +1171,18 @@ class MMap(object):
         expansion = thought.toggle_expand('e', direction)
         print("expanding", direction, thought.part_expand)
         self.hide_children(thought, expansion, direction)
+
+    def check_hide_links(self, indices):
+        if isinstance(indices, int):
+            for k in self.links.keys():
+                if indices in k:
+                    self.links[k].setVisible(not self.thoughts[indices].hidden)
+        else:  # assumes indices is a list
+            for ind in indices:
+                for k in self.links.keys():
+                    if ind in k:
+                        self.links[k].setVisible(not self.thoughts[ind].hidden)
+            
 
     def hide_children(self, thought, expansion, direction):
         if 'children' in thought.family[direction]:
