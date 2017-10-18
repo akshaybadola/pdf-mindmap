@@ -3,7 +3,7 @@ import math
 import threading
 import sys
 import operator
-from functools import reduce, singledispatch
+from functools import reduce, singledispatch, partial
 
 from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QBrush, QPainterPath, QPainter, QColor, QPen, QPixmap, QRadialGradient
@@ -17,31 +17,41 @@ from Shape import Shape, Shapes
 from LoadSave import load_file, save_file
 
 # Priorities:
-# 1. Is save_data not saving pos() for items or are they being added by add_thought
-#     so pos() is overwritten?
-# 6. Attach child to new parent (Right click drag, reattaches selected nodes and descendants.
-#     Use blur to show that they can be attached now, and remove blur to attach, place close
-#     coming from the same direction
+# 1. Left, Right, Up, Down are also bound to scrolling the GraphicsView
+#     - Must change those to something else.
+# 6. Attach child to new parent
+#     - Graphics is working, only have to update parent and children dicts
+#     - links are not drawn on the residual coords
+# 4. Expansion, contraction by mouse.
+#     - Hidden and expand flags are not correctly working w.r.t. navigation (though mostly working)
+#     - Mouse expand will only work if there's an indicator that there's something to expand
+#     - Expansion more robust with checks such that if all directions are 'd', then
+#       expand is 'd'
+#     - Also change 'd' to 'c' for collapse (change dicts to enums?)
 # 5. If the children are moved from one side to the other, the sides
 #     in family dict and links etc. should reflect so that navigation is seamless
-# 4. By default only directories are visible after populate_tree
+#     - But then the direction would also have to change. The change should be
+#       sudden.
 # 2. File Hashes and directory watching
+# 4. Basic emacs like key-bindings for the text editor
+# 3. Do I need node resize?
 # 25. A status bar at the bottom to notify all the changes
 #      -  Both the status bar and the search bar should be children to the top level window
-# 18. A collapsed node should have an indicator in which direction it has children
-#        But yes, partial expansion in a direction should be there
 # b) Add a child to each pdf node which by default is always collapsed but
 #     expands on demand(with animation) as the node is selected and shows
 #     the description (which may or may not be there) for that file
+# 1. Customizable key-mappings, with a template to automatically
+#     do it from a config file
 
+
+# 10. Change all dicts to enums?
 # 1. Links between nodes other than with a parent child relationship
 #     And a way to show/hide them and navigate between them
 # 2. *Color hierarchy. I'm not ready to put color choosers yet there
-#      - Colors other than red are there now.
+#      - Colors other than red are there now, but they're still bound to shape
 # 3. Children should snap close to each other
 # 4. An overall method to adjust everything according to some rules
 # 6. Also a way to move children from one side to another (with animation)
-# 8. Arrow for insert direction change
 # 9. Panning, zoom (wtf is that and how to handle wrt saves and restore)
 # 10. Animation while expansion and contraction
 # 14. *Should insert new nodes away from other nodes as well and not
@@ -57,13 +67,11 @@ from LoadSave import load_file, save_file
 #      - I think that can be accomplished fairly easily as the node would have to be
 #        some other node's child
 # 23. There should be an option to show the directory tree k-level deep, i.e., show
-#       till kth-level collapsed and the rest expanded.
-#       - Also there can be an option to populate the tree with the folder nodes collapsed
-#         i.e., files not showing
+#       till kth-level expanded and the rest collapsed.
 # 24. Cycle items should only cycle between visible items and not hidden ones (Is this needed now?)
 # 25. Tabular format for all the pdfs (or selected pdfs or families) for mendeley like environment
 #       in QtQuick
-
+# 26. Pdf previews in tiny windows which are children of the top level window or ideally, the scene
 
 class MyLineEdit(QLineEdit):
     def __init__(self, mmap, *args):
@@ -74,8 +82,11 @@ class MyLineEdit(QLineEdit):
 
     def update_text(self):
         for k, v in self.mmap.thoughts.items():
-            self.text_dict[k] = v.text.lower()
-
+            if not self.mmap.thoughts[k].hidden:
+                self.text_dict[k] = v.text.lower()
+            else:
+                self.text_dict[k] = ''
+                
     def highlight(self):
         text = self.text()
         twt = []
@@ -137,7 +148,6 @@ class MMap(object):
         self.pix_items = []
         self.thought_positions = []
         self.dragging_items = []
-        self.dragging_transluscent = False
         self.target_item = None
 
         self.coo_x = singledispatch(self.coo_x)
@@ -164,7 +174,7 @@ class MMap(object):
             #     sys.exit()
 
     def save_data(self, filename=None):
-        print ("trying to save data")
+        print("trying to save data")
         if not filename:
             filename = '/home/joe/test.json'
         data = {}
@@ -189,6 +199,10 @@ class MMap(object):
         links_data = data['links']
         for l in links_data:
             self.add_link(l[0][0], l[0][1], l[1])
+        for t in self.thoughts.keys():
+            for lk in self.links.keys():
+                if t in lk and self.thoughts[t].hidden:
+                    self.links[lk].setVisible(False)
 
     def add_thought(self, pos, shape=None, text="test thought", pdf=None, data={}):
         if pdf:
@@ -205,7 +219,6 @@ class MMap(object):
     # Perhaps attach to next up in hierarchy?
     def delete_thought(self, thought):
         ind = thought.index
-        thought.remove()
         for i in thought.family['children']:
             self.thoughts[i].family['parent'] = None
             for c in ['u', 'd', 'l', 'r']:
@@ -214,6 +227,25 @@ class MMap(object):
                 if 'parent' in self.thoughts[i].family[c]:
                     self.thoughts[i].family[c].pop('parent')
 
+        par = thought.family['parent']
+        if par:
+            par = self.thoughts[par]
+            children = par.family['children']
+            children.remove(ind)
+            for c in ['u', 'd', 'l', 'r']:
+                if 'children' in par.family[c]:
+                    if ind in par.family[c]['children']:
+                        par.family[c]['children'].remove(ind)
+            for child in children:
+                child = self.thoughts[child]
+                for c in ['u', 'd', 'l', 'r']:
+                    print (c, child.family)
+                    if 'siblings' in child.family[c]:
+                        if ind in child.family[c]['siblings']:
+                            child.family[c]['siblings'].remove(ind)
+                
+        thought.remove()
+        self.thoughts.pop(ind)
         links_to_remove = [l for l in self.links.keys() if ind in l]
         for l in links_to_remove:
             self.scene.removeItem(self.links[l])
@@ -226,9 +258,11 @@ class MMap(object):
         self.scene.addItem(self.links[(t1_ind, t2_ind)])
         self.scene.update()
         
-    def dist(self, item1, item2):
-        return (item1.pos().x() - item2.pos().x()) ** 2 + (item1.pos().y() - item2.pos().y()) ** 2
-
+    def update_pos(self):
+        for thought in self.thoughts.values():
+            thought.coords = thought.mapToScene(thought.pos())
+            thought.shape_coords = (thought.shape_item.pos().x(), thought.shape_item.pos().y())
+            
     def dist_pos(self, pos1, pos2):
         return (pos1.x() - pos2.x()) ** 2 + (pos1.y() - pos2.y()) ** 2
 
@@ -314,6 +348,47 @@ class MMap(object):
     def _coo_shape(self, t):
         return t.pos()
 
+    # def dist(self, item1, item2):
+    #     return (item1.pos().x() - item2.pos().x()) ** 2 + (item1.pos().y() - item2.pos().y()) ** 2
+
+    def dist(self, x, y):
+        if isinstance(x, Shape):
+            if isinstance(y, Shape):
+                return (x.pos().x() - y.pos().x()) ** 2 + (x.pos().y() - y.pos().y()) ** 2
+            elif isinstance(y, Thought):
+                return (x.pos().x() - y.shape_item.pos().x()) ** 2 + (x.pos().y() - y.shape_item.pos().y()) ** 2
+            elif isinstance(y, QPointF):
+                return (x.pos().x() - y.x()) ** 2 + (x.pos().y() - y.y()) ** 2
+            elif isinstance(y, tuple):
+                return (x.pos().x() - y[0]) ** 2 + (x.pos().y() - y[1]) ** 2
+        elif isinstance(x, Thought):
+            if isinstance(y, Shape):
+                return (x.shape_item.pos().x() - y.pos().x()) ** 2 + (x.shape_item.pos().y() - y.pos().y()) ** 2
+            elif isinstance(y, Thought):
+                return (x.pos().x() - y.pos().x()) ** 2 + (x.pos().y() - y.pos().y()) ** 2
+            elif isinstance(y, QPointF):
+                return (x.pos().x() - y.x()) ** 2 + (x.pos().y() - y.y()) ** 2
+            elif isinstance(y, tuple):
+                return (x.pos().x() - y[0]) ** 2 + (x.pos().y() - y[1]) ** 2
+        elif isinstance(x, QPointF):
+            if isinstance(y, Shape):
+                return (x.x() - y.pos().x()) ** 2 + (x.y() - y.pos().y()) ** 2
+            elif isinstance(y, Thought):
+                return (x.x() - y.pos().x()) ** 2 + (x.y() - y.pos().y()) ** 2
+            elif isinstance(y, QPointF):
+                return (x.x() - y.x()) ** 2 + (x.y() - y.y()) ** 2
+            elif isinstance(y, tuple):
+                return (x.x() - y[0]) ** 2 + (x.y() - y[1]) ** 2
+        elif isinstance(x, tuple):
+            if isinstance(y, Shape):
+                return (x[0] - y.pos().x()) ** 2 + (x[1] - y.pos().y()) ** 2
+            elif isinstance(y, Thought):
+                return (x[0] - y.pos().x()) ** 2 + (x[1] - y.pos().y()) ** 2
+            elif isinstance(y, QPointF):
+                return (x[0] - y.x()) ** 2 + (x[1] - y.y()) ** 2
+            elif isinstance(y, tuple):
+                return (x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2
+            
     # @singledispatch
     # def coo_x(self, t):
     #     return t.pos().x()
@@ -391,6 +466,10 @@ class MMap(object):
                 self.add_new_child(
                     p, data={'text': os.path.basename(f), 'pdf': os.path.join(node['name'], f), 'color': 'yellow'},
                     shape=Shapes['rectangle'], direction=direction)
+                p.part_expand[direction] = 'd'
+                p.expand = 'e'
+                self.thoughts[self.cur_index].check_hide(True)
+                self.links[p.index, self.cur_index].setVisible(False)
 
         def pop_dirs():
             for d in node['children']:
@@ -447,26 +526,16 @@ class MMap(object):
         else:
             self.add_thought(pos, pdf=pdf)
 
-    # here parent is passed directly so I might move this function elsewhere
-    # Some mistake is happening while adding indices
-    def add_new_child(self, parent, data={}, shape=Shapes['rectangle'], direction=None):
-        if isinstance(parent, Thought):
-            shape_item = parent.shape_item  # shape item for that thought
-        elif isinstance(parent, Shape):
-            parent = parent.text_item
-            shape_item = parent.shape_item
+    def place_child(self, parent, direction):
+        shape_item = parent.shape_item  # shape item for that thought
 
         def child_thoughts(parent, c_inds):
             return map(lambda x: self.thoughts[x], parent.family[direction]['children'])
 
-        if not direction:
-            direction = parent.insert_dir
         pos = None
-        dir_map = self.dir_map
-        axis, orientation = dir_map[direction]
+        axis, orientation = self.dir_map[direction]
         displacement = 200
         buffer = 20
-        print (direction, parent.family)
         if 'parent' in parent.family[direction]:  # [0] == 'parent':  # or parent.family[direction][0] == 'siblings':
             return
         x = self.coo_x(shape_item)
@@ -520,6 +589,18 @@ class MMap(object):
                     pos = QPointF(x, y - displacement)
                 else:  # d
                     pos = QPointF(x, y + displacement + shape_item.boundingRect().getRect()[3])
+        return pos
+        
+
+    def add_new_child(self, parent, data={}, shape=Shapes['rectangle'], direction=None):
+        if isinstance(parent, Shape):
+            parent = parent.text_item
+
+        if not direction:
+            direction = parent.insert_dir
+        axis, orientation = self.dir_map[direction]
+        
+        pos = self.place_child(parent, direction)
 
         data.update({'side': direction})
         self.add_thought(pos, text="child thought", shape=shape, data=data)
@@ -531,17 +612,18 @@ class MMap(object):
 
         c_t = self.thoughts[self.cur_index]
         idir = self.inverse_map[direction]
-        iorient = self.inverse_map[orientation]
+        # iorient = self.inverse_map[orientation]
         c_t.family['parent'] = parent.index
         c_t.family[idir] = {'parent': parent.index}
-        c_t.family[iorient[0]] = {'siblings': parent.family[direction]['children']}
-        c_t.family[iorient[1]] = {'siblings': parent.family[direction]['children']}
-        for i in parent.family[direction]['children']:
-            self.thoughts[i].family[iorient[0]]['siblings'] = parent.family[direction]['children']
-            self.thoughts[i].family[iorient[1]]['siblings'] = parent.family[direction]['children']
+        self.update_siblings(parent, c_t, direction)
         self.add_link(parent.index, self.cur_index, direction=direction)
         # self.adjust_thoughts()
-
+        # The following code updates siblings, now replaced by the function
+        # c_t.family[iorient[0]] = {'siblings': parent.family[direction]['children']}
+        # c_t.family[iorient[1]] = {'siblings': parent.family[direction]['children']}
+        # for i in parent.family[direction]['children']:
+        #     self.thoughts[i].family[iorient[0]]['siblings'] = parent.family[direction]['children']
+        #     self.thoughts[i].family[iorient[1]]['siblings'] = parent.family[direction]['children']
 
     def to_pixmap(self, items):
         for item in items:
@@ -560,11 +642,13 @@ class MMap(object):
                 self.to_pixmap(self.dragging_items)
         elif drag_state == 'dragging':
             if self.dragging_items:
-                if not self.dragging_transluscent:
-                    self.dragging_transluscent = True
-                    for di in self.dragging_items:
-                        di.text_item.set_transluscent(0.6)
+                for di in self.dragging_items:
+                    di.text_item.set_transluscent(0.6)
                 totalRect = reduce(operator.or_, (i.sceneBoundingRect() for i in self.dragging_items))
+                tr = totalRect.getRect()
+                buf = 40
+                totalRect = QRectF(tr[0] - buf, tr[1] - buf, tr[2] + 2 * buf, tr[3] + 2 * buf)
+                self.scene.addRect(totalRect)
                 intersection = self.scene.items(totalRect, Qt.IntersectsItemBoundingRect)
                 items = list(filter(lambda x: isinstance(x, Shape) and x not in self.dragging_items, intersection))
                 if not items:
@@ -607,13 +691,142 @@ class MMap(object):
                 self.thought_positions = []
                 for item in self.dragging_items:
                     item.text_item.set_opaque()
-                    self.update_parent(item.index, self.target_item.index)
+                self.update_parent(self.dragging_items, self.target_item)
                 self.target_item = None
                 self.scene.update()
                     
-    def update_parent(self, c_ind, p_ind):
-        pass
+    def attach_dir(self, target, c_inds):
+        if isinstance(target, Thought):
+            coords = target.shape_item.get_link_coords()
+            tlc = [target.shape_item.mapToScene(c[0], c[1]) for c in coords]
+        else:
+            coords = target.get_link_coords()
+            tlc = [target.mapToScene(c[0], c[1]) for c in coords]
 
+        def xx(x):
+            return x.mapToScene(x.boundingRect().center()).x()
+        def xy(x):
+            return x.mapToScene(x.boundingRect().center()).y()
+        x_ = sum([xx(self.thoughts[ind]) for ind in c_inds])/len(c_inds)
+        y_ = sum([xy(self.thoughts[ind]) for ind in c_inds])/len(c_inds)
+        return ['l', 'u', 'r', 'd'][
+            min([(j, self.dist((x_, y_), tlc[j])) for j in range(4)], key=lambda x: x[1])[0]]
+
+    # crashes if you try to add child to same parent in different direction
+    # If the parent is collapsed the children aren't added. Intersection!
+    def update_parent(self, children, target):
+        # if there are multiple famillies, find the highest member in each
+        # What if I only attach the parent and not the children?
+        # Currently it's assumed that the children move with the parent
+        indices = set([child.index for child in children])
+        indices_full = indices.copy()
+        filtered = [c for c in children]
+        ol = len(filtered)
+
+        diff = 1
+        while (diff):
+            for f in filtered:
+                if f.family['parent'] in indices:
+                    indices.remove(f.index)
+            filtered = list(filter(lambda c: c.index in indices, children))
+            diff = ol - len(filtered)
+            ol = len(filtered)
+
+        # indices has the top level nodes
+        # for each index check parent, children and siblings
+        # change parent to target, change children to only those which are in selection
+        # change siblings to union which are in selection and children of newly attached parent
+        # for those which are not top-level, change siblings and children
+
+        # For each top level node that is attached, attach them in the same direction.
+        #  - change the directions of all their children to away from the parent node
+
+        # The direction now is correct w.r.t. the average of the top level nodes
+        # I'm not dealing with the old family though.
+        # Remove old family, attach to new one
+        direction = self.attach_dir(target, indices)
+        idir = self.inverse_map[direction]
+        for ind in indices:
+            t = self.thoughts[ind]
+
+            # remove from old family
+            t_pind = t.family['parent']
+            if t_pind:
+                t_par = self.thoughts[t.family['parent']]
+                t_par.family['children'].remove(t.index)
+                t_par.family[t.side]['children'].remove(t.index)
+                d_0, d_1 = self.inverse_map[self.orient_map[t.side]]
+                for sib in t_par.family[t.side]['children']:
+                    if 'siblings' in self.thoughts[sib].family[d_0]:
+                        self.thoughts[sib].family[d_0]['siblings'].remove(t.index)
+                    if 'siblings' in self.thoughts[sib].family[d_1]:
+                        self.thoughts[sib].family[d_1]['siblings'].remove(t.index)
+                self.scene.removeItem(self.links[(t_par.index, t.index)])
+                self.links.pop((t_par.index, t.index))
+
+            # Add to new family.  At addition all positions are
+            # overridden if the direction of the children requires a
+            # change for any of the top level nodes
+            t.family['parent'] = target.index
+            # t.family['children'].intersection_update(indices_full)
+            t.side = direction
+            if 'children' in t.family[idir]:
+                self.replace_children(t, idir)
+            # temp = t.family[idir]
+            # clean the thought
+            for c in ['u', 'd', 'l', 'r']:
+                # if 'children' in t.family[c]:
+                #     t.family[c]['children'].intersection_update(indices_full)
+                if 'siblings' in t.family[c]:
+                    t.family[c].pop('siblings')
+                if 'parent' in t.family[c]:
+                    t.family[c].pop('parent')
+            target.family['children'].add(t.index)
+            if 'children' in target.family[direction]:
+                target.family[direction]['children'].add(t.index)
+            else:
+                target.family[direction]['children'] = {t.index}
+            t.family[idir] = {'parent': target.index}
+            self.add_link(target.index, t.index, direction)
+            self.update_siblings(target, t, direction)
+            
+    def update_siblings(self, par, child, direction):
+        iorient = self.inverse_map[self.orient_map[direction]]
+        # avoid adding self to siblings, although in most other cases self is sibling
+        if 'children' in par.family[direction] and len(par.family[direction]) > 1:
+            if 'children' not in child.family[iorient[0]]:
+                child.family[iorient[0]] = {'siblings': par.family[direction]['children']}
+            if 'children' not in child.family[iorient[1]]:
+                child.family[iorient[1]] = {'siblings': par.family[direction]['children']}
+            for i in par.family[direction]['children']:
+                self.thoughts[i].family[iorient[0]]['siblings'] = par.family[direction]['children']
+                self.thoughts[i].family[iorient[1]]['siblings'] = par.family[direction]['children']
+
+    # Currently it replaces children from one direction to opposite
+    # But I'd like to replace it from any direction to any other feasible direction
+    def replace_children(self, par, idir):
+        direction = self.inverse_map[idir]
+        iorient = self.inverse_map[self.orient_map[direction]]
+        for c_ind in par.family[idir]['children']:
+            self.thoughts[c_ind].family[idir] = {'parent': par.index}
+            if 'parent' in self.thoughts[c_ind].family[idir]:
+                self.thoughts[c_ind].family[direction] = {}
+            if 'children' in par.family[direction]:
+                par.family[direction]['children'].add(c_ind)
+            else:
+                par.family[direction] = {'children': {c_ind}}
+            pos = self.place_child(par, direction)
+            self.thoughts[c_ind].shape_item.setPos(pos)
+            self.thoughts[c_ind].side = direction
+            self.scene.removeItem(self.links[(par.index, c_ind)])
+            self.add_link(par.index, c_ind, direction)
+            # This overwriting quality may not work if there are children in
+            # one of these directions. Maybe I should add a check
+            self.thoughts[c_ind].family[iorient[0]] = {'siblings': par.family[direction]['children']}
+            self.thoughts[c_ind].family[iorient[1]] = {'siblings': par.family[direction]['children']}
+            if 'children' in self.thoughts[c_ind].family[idir]:
+                self.replace_children(self.thoughts[c_ind], idir)
+        par.family[idir].pop('children')
            
     def last_child_ordinate(self, t_inds, orientation, axis):
         if orientation == 'horizontal':
@@ -652,6 +865,8 @@ class MMap(object):
         else:
             t = self.thoughts[t_ind]
         t.shape_item.setSelected(True)
+        gview = self.scene.views()[0]
+        gview.ensureVisible(t.shape_item)
 
     def adjust_thoughts(self):
         # get collisions
@@ -806,6 +1021,7 @@ class MMap(object):
             self.search_widget.widget().setFocus()
             self.typing = True
         else:
+            self.toggle_search_cycle(toggle=False)
             self.search_widget.setVisible(False)
             self.typing = False
             self.un_highlight()

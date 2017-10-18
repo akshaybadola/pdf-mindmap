@@ -20,11 +20,12 @@ Shapes = {'ellipse': 1, 'rectangle': 2, 'rounded_rectangle': 3, 'circle': 4}
 class Shape(QGraphicsEllipseItem):
     def __init__(self, text_item, color, *args):
         self.text_item = text_item
+        self.family = self.text_item.family
         self.index = self.text_item.index
         self.color = color
         super(Shape, self).__init__(self.boundingRect())
         self.setFlags(
-            self.flags() | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsMovable)   # | QGraphicsItem.ItemSendsScenePositionChanges)
+            self.flags() | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemSendsGeometryChanges)   # | QGraphicsItem.ItemSendsScenePositionChanges)
         self.make_brush()
         self.prepareGeometryChange()
         self.set_editable = self.text_item.set_editable
@@ -32,6 +33,7 @@ class Shape(QGraphicsEllipseItem):
         self.setZValue(-1)
         self.text_item.mmap.links_zvalue(self.text_item, -2)
 
+    # ['l', 'u', 'r', 'd']
     def get_link_coords(self):
         rect = self.boundingRect().getRect()
         return ((rect[0], rect[1] + rect[3]/2), (rect[0] + rect[2]/2, rect[1]),
@@ -80,8 +82,8 @@ class Shape(QGraphicsEllipseItem):
             # self.text_item.setFocus()
 
     def itemChange(self, change, value):
-        # if change == QGraphicsItem.ItemPositionChange:
-        #     self.text_item.mmap.update_links()
+        if change == QGraphicsItem.ItemPositionChange:
+            self.text_item.mmap.update_pos()
         if change == QGraphicsItem.ItemSelectedChange:
             if value:
                 self.setZValue(2)
@@ -96,17 +98,16 @@ class Shape(QGraphicsEllipseItem):
         
     def to_pixmap(self):
         rect = self.boundingRect()
-        pixmap = QPixmap(rect.size().toSize())
+        pixmap = QPixmap(rect.size().toSize())  # , transformMode=Qt.SmoothTransformation)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing | QPainter.SmoothPixmapTransform)
         painter.translate(-rect.topLeft())
         self.paint(painter, None, None)
         painter.save()
         painter.setPen(QPen(Qt.black))
-        painter.drawText(QPointF(10,10),  self.text_item.text)
-        painter.drawPixmap(QPointF(-20,-20), self.text_item.pdf_icon(), QRectF(-8,-8,40,40)) # QRectF(-8,-8,16,16), self.text_item.pdf_icon())
+        painter.drawText(QPointF(10, 10), self.text_item.text)
+        painter.drawPixmap(QPointF(-20, -20), self.text_item.pdf_icon(), QRectF(-8, -8, 40, 40))  # QRectF(-8,-8,16,16), self.text_item.pdf_icon())
         painter.restore()
         painter.end()
         return pixmap

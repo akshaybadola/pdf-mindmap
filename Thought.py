@@ -124,12 +124,16 @@ class Thought(QGraphicsTextItem):
         self.setParentItem(self.shape_item)
         rect_ = self.boundingRect().getRect()
         # now the thought is simply added on the left of the cursor
-        if self.side == 'l':
-            self.shape_item.setPos(self.mapFromScene(self.coords.x() - rect_[2], self.coords.y()))
-        elif self.side == 'u':
-            self.shape_item.setPos(self.mapFromScene(self.coords.x(), self.coords.y() - rect_[3]))
+        if not self.shape_coords:
+            if self.side == 'l':
+                self.shape_item.setPos(self.mapFromScene(self.coords.x() - rect_[2], self.coords.y()))
+            elif self.side == 'u':
+                self.shape_item.setPos(self.mapFromScene(self.coords.x(), self.coords.y() - rect_[3]))
+            else:
+                self.shape_item.setPos(self.mapFromScene(self.coords.x(), self.coords.y()))
+            self.shape_coords = (self.shape_item.pos().x(), self.shape_item.pos().y())
         else:
-            self.shape_item.setPos(self.mapFromScene(self.coords.x(), self.coords.y()))
+            self.shape_item.setPos(self.shape_coords[0], self.shape_coords[1])
         # I can paint this directly on to the ellipse also, I don't know which
         # will be faster, but then I'll have to calculate bbox while clicking
         pix = self.pdf_icon()
@@ -147,6 +151,7 @@ class Thought(QGraphicsTextItem):
         self.icon.open_pdf = self.open_pdf
         # self.itemChange = self.shape_item_change
         self.setSelected = self.shape_item.setSelected
+        self.check_hide(self.hidden)
         # self.icon.hoverEnterEvent = self.icon_hover_event
         # self.icon.hoverLeaveEvent = self.icon_hover_event
         # self.icon.mouseReleaseEvent = self.icon_release_event
@@ -212,6 +217,7 @@ class Thought(QGraphicsTextItem):
         data = {}
         data['index'] = self.index
         data['coords'] = (self.coords.x(), self.coords.y())
+        data['shape_coords'] = self.shape_coords
         data['text'] = self.text
         data['font_attribs'] = self.font_attribs
         data['pdf'] = self.pdf
@@ -265,6 +271,10 @@ class Thought(QGraphicsTextItem):
             self.family['children'] = set(data['family']['children'])
 
         self.coords = coords
+        if 'shape_coords' in data:
+            self.shape_coords = data['shape_coords']
+        else:
+            self.shape_coords = None
             
         if 'text' in data:
             self.text = data['text']
@@ -391,10 +401,6 @@ class Thought(QGraphicsTextItem):
         self.mmap.scene.removeItem(self.icon)
         self.mmap.scene.removeItem(self)
 
+    # currently not supported
     def attach_pdf(self):
         print("trying to attach pdf")
-
-    # Implement dragging
-    # Implement resize
-    # links are handled by scene
-    # That is about it basically
