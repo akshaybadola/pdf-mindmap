@@ -16,28 +16,41 @@ from Link import Arrow, Link
 from Shape import Shape, Shapes
 from LoadSave import load_file, save_file
 
-# Almost everything is done now, except for minor updates that will be required to various
-# aspects. But basic functionality is all working except Expansion, Contraction By Mouse
-# 
 # Priorities:
-# 1. Left, Right, Up, Down are also bound to scrolling the GraphicsView
-#     - Must change those to something else.
-# 3. Alignment while re-placing children is incorrect if added anywhere, either modify place_child
-#     or write a new function for it.
-# 2. Navigation and expansion although they work fine, sometimes the keystrokes don't
-#     do what is expected of them (require more than one keypress)
-# 4. Expansion, contraction by mouse.
+# CRASH: if I delete some children while in cycle_ and then try to move in opposite movement direction
+#              FIXED with adjusting self.cycle_items
+# CRASH: After partial expand, navigation to child nodes to children and again trying to do partial expand
+#              in orthogonal direction causes a crash
+#              FIXED with the adjustment to hide_thoughts where if expand_leaves is false, then the node's
+#              directional expand flag is set to false if all children are leaves
+# 1. Maybe change the expand and collapse behaviours
+#     - Space collapses expands all nodes except k-th level (leaves or perhaps one level up from leaves)
+#     - Shift_Space collapses and expands all nodes
+#     - Control_direction collapses and expands only one level
+# 4. Fix expansion, collapse
 #     - Hidden and expand flags are not correctly working w.r.t. navigation (though mostly working)
 #     - Mouse expand will only work if there's an indicator that there's something to expand
 #     - Expansion more robust with checks such that if all directions are 'd', then
 #       expand is 'd'
-#     - Also change 'd' to 'c' for collapse (change dicts to enums?)
+#     -  Add Expansion, contraction by mouse.
+# 2. Navigation and expansion although they work fine, sometimes the keystrokes don't
+#     do what is expected of them (require more than one keypress or navigate to disconnected nodes)
+
+
+# Most of it seems to be working fine now. Maybe a few bugs are still there, we can deal with them later.
+# 
+# 25. A status bar at the bottom to notify all the changes
+#      -  Both the status bar and the search bar should be children to the top level window
+# 1. Left, Right, Up, Down are also bound to scrolling the GraphicsView
+#     - Must change those to something else.
+# 3. Alignment while re-placing children is incorrect if added anywhere, either modify place_child
+#     or write a new function for it.
+#     - Alignment is also incorrect for new children if the width of the window is too long
+#       Must adjust.
 # 2. File Hashes and directory watching
 
 # 4. Basic emacs like key-bindings for the text editor
 # 3. Do I need node resize?
-# 25. A status bar at the bottom to notify all the changes
-#      -  Both the status bar and the search bar should be children to the top level window
 # b) Add a child to each pdf node which by default is always collapsed but
 #     expands on demand(with animation) as the node is selected and shows
 #     the description (which may or may not be there) for that file
@@ -133,7 +146,7 @@ class MMap(object):
         self.op_map = {'l': (-200, 0), 'r': (200, 0), 'u': (0, -200), 'd': (0, 200)}
         self.movement = None
         self.cycle_index = 0
-        self.cycle_items = None
+        self.cycle_items = []
         self.toggled_search = False
         self.get_selected = self.scene.selectedItems
         self.transluscent = set()
@@ -220,6 +233,9 @@ class MMap(object):
     # Perhaps attach to next up in hierarchy?
     def delete_thought(self, thought):
         ind = thought.index
+        if self.cycle_items:
+            self.cycle_items.remove(ind)
+
         for i in thought.family['children']:
             self.thoughts[i].family['parent'] = None
             for c in ['u', 'd', 'l', 'r']:
@@ -884,14 +900,15 @@ class MMap(object):
     #     return retval[1] + self.thoughts[retval[0]].shape_item.boundingRect().getRect()[2]
     
     def select_one(self, t_ind):
-        self.unselect_all()
         if isinstance(t_ind, set):
             t = self.thoughts[list(t_ind)[0]]
         else:
             t = self.thoughts[t_ind]
-        t.shape_item.setSelected(True)
-        gview = self.scene.views()[0]
-        gview.ensureVisible(t.shape_item)
+        if t.shape_item.isVisible():
+            self.unselect_all()
+            t.shape_item.setSelected(True)
+            gview = self.scene.views()[0]
+            gview.ensureVisible(t.shape_item)
 
     def adjust_thoughts(self):
         # get collisions
@@ -1020,7 +1037,6 @@ class MMap(object):
             thought = None
             if isinstance(thoughts[0], Shape):
                 thought = thoughts[0].text_item
-            print (thought.family)
             if thought.family[direction]:
                 # print (thought.family[direction])
                 # can be parent, children or siblings
@@ -1050,6 +1066,10 @@ class MMap(object):
             self.search_widget.setVisible(False)
             self.typing = False
             self.un_highlight()
+
+    def cycle_check(self, ind):
+        if ind not in self.cycle_items:
+            self.toggle_nav_cycle(False)
 
     def toggle_nav_cycle(self, toggle, movement=None, item_inds=None, direction=None):
         # items are always thoughts
@@ -1093,14 +1113,15 @@ class MMap(object):
             self.cycle_index = (self.cycle_index - 1) % len(self.cycle_items)
         self.select_one(self.cycle_items[self.cycle_index])
 
-
     def cycle_between(self, direction, movement=None, cycle=False):
         print (self.movement, movement)
         if not self.movement:
             self.movement = movement
             self.cycle_between(direction, movement, cycle=cycle)
         elif self.movement != movement:
-            if 'parent' in self.thoughts[self.cycle_items[self.cycle_index]].family[direction]:
+            print (self.thoughts[self.cycle_items[self.cycle_index]].family[direction])
+            if 'parent' in self.thoughts[self.cycle_items[self.cycle_index]].family[direction] or \
+               'children' in self.thoughts[self.cycle_items[self.cycle_index]].family[direction]:
                 self.movement = None
                 self.cycle_items = []
                 self.toggle_nav_cycle(False)
@@ -1122,10 +1143,25 @@ class MMap(object):
             self.select_one(self.cycle_items[self.cycle_index])
             return None
 
-    # Only one level. For contraction the opposite key should be
-    # pressed.
-    # If it's already expanded, it'll toggle cycle between children if any
-    # on that side instead of siblings.
+    # def fix_expansion(self, thoughts, fix='part'):
+    #     def temp(t):
+    #         for c in ['u', 'd', 'l', 'r']:
+    #             if t.part_expand[c] == 'e':
+    #                 t.expand = 'e'
+    #                 return True
+    #     if isinstance(thoughts, Thought):
+    #         thoughts = [thoughts]
+    #     if fix == 'part':
+    #         for t in thoughts:
+    #             if not temp(t):
+    #                 t.expand = 'd'
+    #     elif fix == 'exp':
+    #         for t in thoughts:
+    #             if t.expand == 'd':
+    #                 for c in ['u', 'd', 'l', 'r']:
+    #                     t.part_expand[c] = 'd'
+                
+    # currently only expands a single node
     def partial_expand(self, event):
         selected = self.get_selected()
         if not len(selected) == 1:
@@ -1142,9 +1178,10 @@ class MMap(object):
         for thought in selected:
             if isinstance(thought, Shape):
                 thought = thought.text_item
+            print ("part_expand", thought.text, thought.part_expand)
             if 'siblings' in thought.family[direction]:  # or 'siblings' in thought.family[self.inverse_map[direction]]:
                 if thought.part_expand[direction] == 'e':
-                    if 'children' in thought.family[direction] and thought.family[direction]['children']:
+                    if 'children' in thought.family[direction]:  # and thought.family[direction]['children']:
                         self.select_one(thought.family[direction]['children'])
                         self.toggle_nav_cycle(False)
                         self.toggle_nav_cycle(True, item_inds=thought.family[direction]['children'],
@@ -1196,18 +1233,19 @@ class MMap(object):
                     if ind in k:
                         self.links[k].setVisible(not self.thoughts[ind].hidden)
             
-
+    # for descendants one level deep
     def hide_children(self, thought, expansion, direction):
         if 'children' in thought.family[direction]:
-            if thought.family[direction]['children']:
-                children = map(lambda x: self.thoughts[x], thought.family[direction]['children'])
-                for child in children:
-                    child.check_hide(False if expansion == 'e' else True)
-                    self.links[thought.index, child.index].setVisible(True if expansion == 'e' else False)
-                self.hide_thoughts(children, expansion, True)
+            # if thought.family[direction]['children']:
+            children = [self.thoughts[x] for x in thought.family[direction]['children']]
+            for child in children:
+                child.check_hide(False if expansion == 'e' else True)
+                self.links[thought.index, child.index].setVisible(True if expansion == 'e' else False)
+            # self.fix_expansion(children, 'part')
+            self.hide_thoughts(children, expansion, True, False)
                 
-    # Must add partial collapse and expand
-    def hide_thoughts(self, thoughts, expansion=None, recurse=False):
+
+    def hide_thoughts(self, thoughts, expansion=None, recurse=False, expand_leaves=True):
         thoughts = [t if isinstance(t, Thought) else t.text_item for t in thoughts]
         # 'e' is expand, 'd' is hide
         for thought in thoughts:
@@ -1219,11 +1257,17 @@ class MMap(object):
             children = [self.thoughts[i] for i in thought.family['children']]
             if expansion == 'e':
                 for child in children:
-                    # print(child.old_hidden)
-                    child.check_hide(False)
-                    self.links[thought.index, child.index].setVisible(True)
+                    if not expand_leaves:
+                        thought.toggle_expand('d')
+                        if child.family['children']:
+                            child.check_hide(False)
+                            self.links[thought.index, child.index].setVisible(True)
+                            thought.toggle_expand('e')
+                    else:
+                        child.check_hide(False)
+                        self.links[thought.index, child.index].setVisible(True)
                 if recurse:
-                    self.hide_thoughts(children, 'e', recurse=True)
+                    self.hide_thoughts(children, 'e', recurse=True, expand_leaves=expand_leaves)
                 # self.adjust_thoughts()
             elif expansion == 'd':
                 for child in children:
@@ -1231,6 +1275,7 @@ class MMap(object):
                     child.toggle_expand('d')
                     self.links[(thought.index, child.index)].setVisible(False)
                 self.hide_thoughts(children, 'd')
+        # self.fix_expansion(thoughts, 'exp')
 
     def other_key_events(self, event):
         if event.keysym == 'a':
@@ -1261,27 +1306,3 @@ class MMap(object):
                 pass
         elif event.keysym == 'S': # save_as
             self.saveData(self.filename)
-
-
-    # This is all for attaching via mouse
-    # Currently multiple parents are allowed but they're not updated
-    # in the dictionary LOL. This won't be a tree like structure
-    def attach_child(self, thought):
-        if self.closest_overlapping:
-            print(thought.index, self.closest_overlapping.index)
-            self.closest_overlapping.tk_text.lift()
-            thought.loc = thought.old_loc
-            thought.pixLoc = thought.old_pixLoc
-            thought.reDraw()
-            thought.updateFont()
-            thought.resizeForText()
-            self.closest_overlapping.reDraw()
-
-            self.add_link_to_child(self.closest_overlapping, thought)
-
-            # print (thought.family)
-            # print (self.closest_overlapping.family)
-
-            self.closest_overlapping = None
-            # Have to attach an arrow from parent to child
-            # I think that can be handled on thought level

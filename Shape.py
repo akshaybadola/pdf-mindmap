@@ -89,6 +89,7 @@ class Shape(QGraphicsEllipseItem):
                 self.setZValue(2)
                 self.make_brush('dark')
                 self.text_item.mmap.links_zvalue(self.text_item, 1)
+                self.text_item.mmap.cycle_check(self.text_item.index)
             else:
                 self.setZValue(-1)
                 self.make_brush('regular')
