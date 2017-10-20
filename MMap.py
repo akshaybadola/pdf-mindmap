@@ -39,15 +39,18 @@ from LoadSave import load_file, save_file
 
 # Most of it seems to be working fine now. Maybe a few bugs are still there, we can deal with them later.
 # 
-# 25. A status bar at the bottom to notify all the changes
-#      -  Both the status bar and the search bar should be children to the top level window
-# 1. Left, Right, Up, Down are also bound to scrolling the GraphicsView
+# 4. File Hashes and directory watching
+# 1. Partial expand automatically if the hidden node contains a search term
+#     - Expand alongside siblings? Or just the node?
+# 2. Left, Right, Up, Down are also bound to scrolling the GraphicsView
 #     - Must change those to something else.
 # 3. Alignment while re-placing children is incorrect if added anywhere, either modify place_child
 #     or write a new function for it.
 #     - Alignment is also incorrect for new children if the width of the window is too long
 #       Must adjust.
-# 2. File Hashes and directory watching
+# 4. If a node has too many files, then perhaps show only a few but scroll through all
+#     maybe ability to search through them also selectively 
+
 
 # 4. Basic emacs like key-bindings for the text editor
 # 3. Do I need node resize?
@@ -87,12 +90,17 @@ from LoadSave import load_file, save_file
 #       in QtQuick
 # 26. Pdf previews in tiny windows which are children of the top level window or ideally, the scene
 
+class StatusBar:
+    pass
+
 class MyLineEdit(QLineEdit):
-    def __init__(self, mmap, *args):
+    def __init__(self, *args):
         super(MyLineEdit, self).__init__(*args)
-        self.mmap = mmap
         self.text_dict = {}
         self.twt = None
+
+    def set_mmap(self, mmap):
+        self.mmap = mmap
 
     def update_text(self):
         for k, v in self.mmap.thoughts.items():
@@ -154,10 +162,6 @@ class MMap(object):
         self.links = {}
         self.selections = []
         self.cur_index = 0
-        self.search_widget = self.scene.addWidget(MyLineEdit(self))
-        self.search_widget.widget()
-        self.search_widget.setVisible(False)
-
         self.arrows = []
         self.pix_items = []
         self.thought_positions = []
@@ -187,8 +191,24 @@ class MMap(object):
             #     print("Some weird error occured while trying to populate canvas.\nThe program will exit")
             #     sys.exit()
 
+    def init_widgets(self, search_widget, status_bar):
+        self.search_widget = search_widget
+        self.search_widget.set_mmap(self)
+        self.search_widget.setVisible(False)
+        self.status_bar = status_bar
+        self.status_bar.setSizeGripEnabled(False)
+        self.status_bar.setStyleSheet("background-color: white")
+        self.status_bar.setVisible(True)
+        self.status_bar.show()
+        self.status_bar.showMessage("Ready...", 0)
+
+    def reposition_status_bar(self, geom):
+        rect = geom.getRect()
+        self.status_bar.setGeometry(0, rect[3] - 40, rect[2], 50)
+
     def save_data(self, filename=None):
         print("trying to save data")
+        self.status_bar.showMessage("trying to save data", 0)
         if not filename:
             filename = '/home/joe/test.json'
         data = {}
@@ -198,6 +218,7 @@ class MMap(object):
             data['thoughts'].append(t.serialize())
         data['links'] = list(zip(list(self.links.keys()), [l.direction for l in self.links.values()]))
         save_file(data, filename)
+        self.status_bar.showMessage("Saved to file" + filename, 0)
 
     def load_data(self, filename=None):
         print ("trying to load data")
@@ -1054,12 +1075,12 @@ class MMap(object):
         self.toggled_search = not self.toggled_search
         if self.toggled_search:
             # self.search_entry.place(x=0, y=pixelY-30, width=500, height=30)
-            gview = self.scene.views()[0]
-            self.search_widget.setPos(gview.mapToScene(gview.rect().topLeft()))
-            self.search_widget.widget().update_text()
+            # gview = self.scene.views()[0]
+            # self.search_widget.setPos(gview.mapToScene(gview.rect().topLeft()))
+            self.search_widget.update_text()
             self.search_widget.setVisible(True)
-            self.search_widget.widget().setText("")
-            self.search_widget.widget().setFocus()
+            self.search_widget.setText("")
+            self.search_widget.setFocus()
             self.typing = True
         else:
             self.toggle_search_cycle(toggle=False)
@@ -1104,7 +1125,7 @@ class MMap(object):
             self.cycle_index = 0
             self.select_one(self.cycle_items[self.cycle_index])
         else:
-            self.cycle_items = None
+            self.cycle_items = []
     
     def search_cycle(self, key):
         if key == Qt.Key_N:

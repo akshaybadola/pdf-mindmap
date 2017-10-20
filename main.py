@@ -7,12 +7,12 @@ from pathlib import Path
 from watcher.watcher import Watcher
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QGraphicsView, QApplication, QGraphicsScene
+from PyQt5.QtWidgets import QGraphicsView, QApplication, QGraphicsScene, QStatusBar, QGridLayout
 from GraphicsView import GraphicsView
 
 from PyQt5.QtOpenGL import QGL, QGLWidget, QGLFormat
 
-from MMap import MMap
+from MMap import MMap, MyLineEdit, StatusBar
 
 # Each map can be linked to a scene
 class MindMap(QGraphicsScene):
@@ -22,7 +22,7 @@ class MindMap(QGraphicsScene):
         self.store_dir = store_dir
         self.filename = filename
         # Create a new watcher instance which should actually be for each Sheet
-        self.watcher = Watcher(self.root_dir, self.store_dir)
+        # self.watcher = Watcher(self.root_dir, self.store_dir)
         self.create_new_map()
 
     def exit_app(self):
@@ -103,6 +103,9 @@ if __name__ == "__main__":
     grview.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
     grview.setViewport(QGLWidget(QGLFormat(QGL.SampleBuffers)))
     grview.resize(1200, 800)
+    line_edit = MyLineEdit(grview)
+    status_bar = QStatusBar(grview)
+    mm.mmap.init_widgets(line_edit, status_bar)
     # grview.horizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
     # grview.verticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)    
     # mm.setSceneRect(0, 0, 1200, 800)

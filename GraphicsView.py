@@ -33,6 +33,10 @@ class GraphicsView(QGraphicsView):
         self.zoomOutFactor = 1 / self.zoomInFactor
         # self.mmap = MMap(scene)
 
+    def resizeEvent(self, event):
+        self.mmap.reposition_status_bar(self.geometry())
+        super().resizeEvent(event)
+
     def dragEnterEvent(self, event):
         accepted = False
         mime = event.mimeData()
