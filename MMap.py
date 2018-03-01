@@ -8,7 +8,8 @@ from functools import reduce, singledispatch, partial
 from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QBrush, QPainterPath, QPainter, QColor, QPen, QPixmap, QRadialGradient
 from PyQt5.QtWidgets import (QGraphicsEllipseItem, QApplication, QGraphicsView, QGraphicsRectItem,QLineEdit,
-                             QGraphicsScene, QGraphicsItem, QGraphicsTextItem, QGraphicsPixmapItem, QGraphicsDropShadowEffect)
+                             QGraphicsScene, QGraphicsItem, QGraphicsTextItem, QGraphicsPixmapItem,
+                             QStatusBar, QGraphicsDropShadowEffect)
 from PyQt5.QtOpenGL import QGL, QGLWidget, QGLFormat
 
 from Thought import Thought
@@ -38,9 +39,12 @@ from LoadSave import load_file, save_file
 
 
 # Most of it seems to be working fine now. Maybe a few bugs are still there, we can deal with them later.
-# 
-# 4. File Hashes and directory watching
-# 1. Partial expand automatically if the hidden node contains a search term
+#
+# 0. File Hashes and directory watching
+# 1. All prompts and information in the status bar
+# 1. Placement while populating tree is still a bit messy and there's no adjust_thoughts
+#     implmentation.
+# 5. Partial expand automatically if the hidden node contains a search term
 #     - Expand alongside siblings? Or just the node?
 # 2. Left, Right, Up, Down are also bound to scrolling the GraphicsView
 #     - Must change those to something else.
@@ -52,6 +56,9 @@ from LoadSave import load_file, save_file
 #     maybe ability to search through them also selectively 
 
 
+# 1. Add a "star" to a file, perhaps of different colors (importance or groupings)
+#     and should be able to highlight the relevant starred files, while either
+#     hiding others or making them transluscent but still available
 # 4. Basic emacs like key-bindings for the text editor
 # 3. Do I need node resize?
 # b) Add a child to each pdf node which by default is always collapsed but
@@ -90,7 +97,10 @@ from LoadSave import load_file, save_file
 #       in QtQuick
 # 26. Pdf previews in tiny windows which are children of the top level window or ideally, the scene
 
-class StatusBar:
+
+class StatusBar(QStatusBar):
+    # Maybe a custom implementation of the statutsbar
+    # for keybindings and stuff
     pass
 
 class MyLineEdit(QLineEdit):
