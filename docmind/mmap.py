@@ -1,14 +1,10 @@
 import os
-import sys
 import operator
-from functools import reduce, singledispatch, partial
+from functools import reduce, singledispatch
 
 from PyQt5.QtCore import Qt, QRectF, QPointF
-from PyQt5.QtGui import QBrush, QPainterPath, QPainter, QColor, QPen, QPixmap, QRadialGradient
-from PyQt5.QtWidgets import (QGraphicsEllipseItem, QApplication, QGraphicsView, QGraphicsRectItem,QLineEdit,
-                             QGraphicsScene, QGraphicsItem, QGraphicsTextItem, QGraphicsPixmapItem,
-                             QStatusBar, QGraphicsDropShadowEffect)
-from PyQt5.QtOpenGL import QGL, QGLWidget, QGLFormat
+from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import QGraphicsItem
 
 from .thought import Thought
 from .link import Arrow, Link
@@ -94,54 +90,6 @@ from .io import load_file, save_file
 # 25. Tabular format for all the pdfs (or selected pdfs or families) for mendeley like environment
 #       in QtQuick
 # 26. Pdf previews in tiny windows which are children of the top level window or ideally, the scene
-
-
-class StatusBar(QStatusBar):
-    # Maybe a custom implementation of the statutsbar
-    # for keybindings and stuff
-    pass
-
-
-class LineEdit(QLineEdit):
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.text_dict = {}
-        self.twt = None
-
-    def set_mmap(self, mmap):
-        self.mmap = mmap
-
-    def update_text(self):
-        for k, v in self.mmap.thoughts.items():
-            if not self.mmap.thoughts[k].hidden:
-                self.text_dict[k] = v.text.lower()
-            else:
-                self.text_dict[k] = ''
-
-    def highlight(self):
-        text = self.text()
-        twt = []
-        for k, v in self.text_dict.items():
-            if text in v:
-                twt.append(k)
-        self.twt = twt
-        self.mmap.highlight(twt)
-
-    def keyPressEvent(self, event):
-        if event.key() in {Qt.Key_Escape, Qt.Key_Return} or\
-           (event.key() in {Qt.Key_G, Qt.Key_S} and event.modifiers() & Qt.ControlModifier):
-            self.mmap.search_toggle()
-            event.accept()
-        elif event.key() in {Qt.Key_P, Qt.Key_N} and event.modifiers() & Qt.ControlModifier:
-            if self.mmap.cycle_items:
-                self.mmap.search_cycle(event.key())
-            else:
-                self.mmap.toggle_search_cycle(self.twt)
-        else:
-            super().keyPressEvent(event)
-            self.mmap.toggle_search_cycle(toggle=False)
-            self.highlight()
-            event.accept()
 
 
 # TODO: I'm not sure the object hierarchy is correct
@@ -262,7 +210,7 @@ class MMap:
         elif 'pdf' in data:
             text = os.path.basename(data['pdf']).replace('.pdf', '')
         if not shape:
-            shape = Shapes['rounded_rectangle']
+            shape = Shapes.rounded_rectangle
         self.cur_index += 1
         self.thoughts[self.cur_index] = Thought(self, self.cur_index, shape, pos, text=text, pdf=pdf, data=data)
         self.scene.update()
@@ -500,7 +448,7 @@ class MMap:
 
         keys = list(self.dirtree.keys())
         keys.sort()
-        self.add_thought(QPointF(1.0, 1.0), Shapes['circle'],
+        self.add_thought(QPointF(1.0, 1.0), Shapes.circle,
                          data={'text': os.path.basename(self.dirtree[keys[0]]['name']), 'color': 'red', 'side': 'u'})
         self.tt_map[keys[0]] = self.cur_index
         self.populate_children(self.dirtree[keys[0]])
@@ -523,7 +471,7 @@ class MMap:
             for f in node['files']:
                 self.add_new_child(
                     p, data={'text': os.path.basename(f), 'pdf': os.path.join(node['name'], f), 'color': 'yellow'},
-                    shape=Shapes['rectangle'], direction=direction)
+                    shape=Shapes.rectangle, direction=direction)
                 p.part_expand[direction] = 'd'
                 p.expand = 'e'
                 self.thoughts[self.cur_index].check_hide(True)
@@ -533,7 +481,7 @@ class MMap:
             for d in node['children']:
                 self.add_new_child(
                     p, data={'text': os.path.basename(self.dirtree[d]['name']), 'color': 'green'},
-                    shape=Shapes['ellipse'], direction=p.side)
+                    shape=Shapes.ellipse, direction=p.side)
                 self.tt_map[d] = self.cur_index
 
         def recurse_():
@@ -648,7 +596,7 @@ class MMap:
                     pos = QPointF(x, y + displacement + shape_item.boundingRect().getRect()[3])
         return pos
 
-    def add_new_child(self, parent, data={}, shape=Shapes['rectangle'], direction=None):
+    def add_new_child(self, parent, data={}, shape=Shapes.rectangle, direction=None):
         if isinstance(parent, Shape):
             parent = parent.text_item
 

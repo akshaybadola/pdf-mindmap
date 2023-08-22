@@ -1,3 +1,5 @@
+import os
+
 from PyQt5.QtWidgets import QGraphicsScene
 
 from .mmap import MMap

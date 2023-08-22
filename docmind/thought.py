@@ -5,14 +5,13 @@ import sys
 
 # import PIL
 
-from PyQt5.QtCore import (qAbs, QLineF, QPointF, qrand, QRectF, QSizeF, qsrand,
-                          Qt, QTime)
-from PyQt5.QtGui import (QBrush, QPainterPath, QPainter, QColor, QPen, QFont, QTextCursor,
-                         QPixmap, QRadialGradient, QMouseEvent, QKeyEvent, QFontMetricsF, QTextDocument)
-from PyQt5.QtWidgets import (QGraphicsEllipseItem, QGraphicsRectItem,QGraphicsScene, QGraphicsItemGroup,
-                             QGraphicsItem, QGraphicsTextItem, QGraphicsSimpleTextItem, QGraphicsPixmapItem, QGraphicsDropShadowEffect)
+from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtGui import QPainterPath, QFont, QPixmap
+from PyQt5.QtWidgets import (QGraphicsItem, QGraphicsTextItem, QGraphicsPixmapItem,
+                             QGraphicsDropShadowEffect)
 
 from .shape import Ellipse, Rectangle, RoundedRectangle, Circle, Shapes
+
 
 # So, I've mostly separated the two parts, i.e., the textobject stuff
 # and the thought stuff. It should work seamlessly.
@@ -41,8 +40,8 @@ class Thought(QGraphicsTextItem):
     #     self.shape_item.setBrush(brush)
 
     # def pos(self):
-        # rect_ = super(Thought, self).boundingRect().getRect()
-        # return (super().pos().x() - rect_[2], rect_[0])
+    #     rect_ = super(Thought, self).boundingRect().getRect()
+    #     return (super().pos().x() - rect_[2], rect_[0])
 
     # def setPos(self, pos):
     #     self.shape_item.prepareGeometryChange()
@@ -59,7 +58,6 @@ class Thought(QGraphicsTextItem):
     # Assumption is that they're added to the end of the groups
     # which is right and down
     def boundingRect(self):
-        return super().boundingRect()
         # rect_ = super(Thought, self).boundingRect().getRect()
         # if self.side == 'left':
         #     return QRectF(rect_[0] - rect_[2], rect_[1], rect_[2], rect_[3])  # only invert x axis
@@ -69,6 +67,7 @@ class Thought(QGraphicsTextItem):
         #     return QRectF(rect_[0], rect_[1] - rect_[3], rect_[2], rect_[3])  # only invert y axis
         # elif self.side == 'down':
         #     return QRectF(rect_[0], rect_[1], rect_[2], rect_[3])  # normal
+        return super().boundingRect()
 
     def focusInEvent(self, event):
         self.mmap.typing = True
@@ -137,14 +136,14 @@ class Thought(QGraphicsTextItem):
         # I can paint this directly on to the ellipse also, I don't know which
         # will be faster, but then I'll have to calculate bbox while clicking
         pix = self.pdf_icon()
-        if self.item_shape == Shapes['rectangle'] or self.item_shape == Shapes['rounded_rectangle']:
+        if self.item_shape in {Shapes.rectangle, Shapes.rounded_rectangle}:
             self.icon = QGraphicsPixmapItem(pix, self.shape_item)
             self.icon.setPos(-20, -10)
             # scene.addItem(item.icon)
-        elif self.item_shape == Shapes['ellipse']:
+        elif self.item_shape == Shapes.ellipse:
             self.icon = QGraphicsPixmapItem(pix, self.shape_item)
             self.icon.setPos(-16, -16)
-        elif self.item_shape == Shapes['circle']:
+        elif self.item_shape == Shapes.circle:
             self.icon = QGraphicsPixmapItem(pix, self.shape_item)
             self.icon.setPos(-8, -24)
         self.handle_icon()
@@ -176,13 +175,13 @@ class Thought(QGraphicsTextItem):
         if not self.item_shape:
             print("Please give a shape")
             sys.exit()
-        if self.item_shape == Shapes['ellipse']:
+        if self.item_shape == Shapes.ellipse:
             self.shape_item = Ellipse(self, self.color)
-        elif self.item_shape == Shapes['rectangle']:
+        elif self.item_shape == Shapes.rectangle:
             self.shape_item = Rectangle(self, self.color)
-        elif self.item_shape == Shapes['rounded_rectangle']:
+        elif self.item_shape == Shapes.rounded_rectangle:
             self.shape_item = RoundedRectangle(self, self.color)
-        elif self.item_shape == Shapes['circle']:
+        elif self.item_shape == Shapes.circle:
             self.shape_item = Circle(self, self.color)
         else:
             print(self.item_shape, "Please give a valid shape")
@@ -244,7 +243,7 @@ class Thought(QGraphicsTextItem):
         return data
 
     def set_properties(self, index, shape, coords, data, pdf, text):
-        if shape not in Shapes.values():
+        if not Shapes.has(shape):
             print("Invalid Shape")
             sys.exit()
         else:

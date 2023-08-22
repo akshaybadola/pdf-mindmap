@@ -1,10 +1,11 @@
 import sys
+from enum import IntEnum, unique
 
-from PyQt5.QtCore import Qt, QRectF, QPointF, QSize, QSizeF
-from PyQt5.QtGui import QBrush, QPainterPath, QPainter, QColor, QPen, QPixmap, QRadialGradient, QMouseEvent, QKeyEvent
-from PyQt5.QtWidgets import (QGraphicsEllipseItem, QApplication, QGraphicsView, QGraphicsRectItem,
-                             QGraphicsScene, QGraphicsItem, QGraphicsTextItem, QGraphicsPixmapItem, QGraphicsDropShadowEffect)
-# from GraphicsView import GraphicsView
+from PyQt5.QtCore import Qt, QRectF, QPointF
+from PyQt5.QtGui import QBrush, QPainterPath, QPainter, QColor, QPen, QPixmap, QRadialGradient
+from PyQt5.QtWidgets import (QGraphicsEllipseItem, QGraphicsItem)
+
+from .util import linspace
 
 # so now most of the basic drawing is working. I don't need
 # any animation for now and I've added the icon
@@ -13,19 +14,19 @@ from PyQt5.QtWidgets import (QGraphicsEllipseItem, QApplication, QGraphicsView, 
 # text_rect = self.text_item.boundingRect().getRect()
 # self.rect_ = QRectF(text_rect[0] - 10, text_rect[1] - 10, text_rect[2] + 20, text_rect[3] + 20)
 
-Shapes = {'ellipse': 1, 'rectangle': 2, 'rounded_rectangle': 3, 'circle': 4}
+
+@unique
+class Shapes(IntEnum):
+    ellipse = 1
+    rectangle = 2
+    rounded_rectangle = 3
+    circle = 4
+
+    @classmethod
+    def has(cls, *members) -> bool:
+        return all(member in cls.__members__.values() for member in members)
 
 
-def linspace(a, b, num_divs):
-    delta = (b - a)/(num_divs-1)
-    result = [a]
-    for i in range(num_divs-1):
-        result.append(result[-1] + delta)
-    return result
-
-
-
-# super(Shape, self).__init__(br)
 class Shape(QGraphicsEllipseItem):
     def __init__(self, text_item, color, *args):
         self.text_item = text_item
@@ -34,7 +35,12 @@ class Shape(QGraphicsEllipseItem):
         self.color = color
         super(Shape, self).__init__(self.boundingRect())
         self.setFlags(
-            self.flags() | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemSendsGeometryChanges)   # | QGraphicsItem.ItemSendsScenePositionChanges)
+            self.flags()
+            | QGraphicsItem.ItemIsSelectable
+            | QGraphicsItem.ItemIsMovable
+            | QGraphicsItem.ItemSendsGeometryChanges
+            # | QGraphicsItem.ItemSendsScenePositionChanges)
+        )
         self.make_brush()
         self.prepareGeometryChange()
         self.set_editable = self.text_item.set_editable
@@ -86,7 +92,6 @@ class Shape(QGraphicsEllipseItem):
         if event.button() == Qt.LeftButton:
             self.set_editable(True)
             event.accept()
-
             # self.text_item.setTextInteractionFlags(Qt.TextEditorInteraction)
             # self.text_item.setFocus()
 
@@ -122,6 +127,7 @@ class Shape(QGraphicsEllipseItem):
         painter.end()
         return pixmap
 
+
 # Must create similar classes like these
 class Ellipse(Shape):
     def __init__(self, text_item, color, *args):
@@ -132,7 +138,8 @@ class Ellipse(Shape):
         text_rect = self.text_item.boundingRect().getRect()
         wid = text_rect[2]
         ht = text_rect[3]
-        return QRectF(text_rect[0] - wid/6, text_rect[1] - ht/4, text_rect[2] + wid/3, text_rect[3] + ht/2)
+        return QRectF(text_rect[0] - wid/6, text_rect[1] - ht/4,
+                      text_rect[2] + wid/3, text_rect[3] + ht/2)
 
     def shape(self):
         path = QPainterPath()
@@ -143,7 +150,7 @@ class Ellipse(Shape):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(self.brush())
         painter.setPen(QPen(Qt.NoPen))
-#         painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
+        # painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
         painter.drawEllipse(self.boundingRect())
 
 
@@ -163,8 +170,9 @@ class Circle(Shape):
             met = wid
         else:
             met = ht
+        # return QRectF(text_rect[0] - wid * 0.05, text_rect[1] - wid * 0.4,
+        # text_rect[3] + wid * 0.8, text_rect[3] + wid * 0.8)  # text_rect[2] + wid/3
         return QRectF(text_cent.x() - met/2, text_cent.y() - met/2, met, met)
-        # return QRectF(text_rect[0] - wid * 0.05, text_rect[1] - wid * 0.4, text_rect[3] + wid * 0.8, text_rect[3] + wid * 0.8)  # text_rect[2] + wid/3
 
     def shape(self):
         path = QPainterPath()
@@ -175,9 +183,8 @@ class Circle(Shape):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(self.brush())
         painter.setPen(QPen(Qt.NoPen))
-#         painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
+        # painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
         painter.drawEllipse(self.boundingRect())
-
 
 
 class Rectangle(Shape):
@@ -189,8 +196,10 @@ class Rectangle(Shape):
         text_rect = self.text_item.boundingRect().getRect()
         # wid = text_rect[2]
         # ht = text_rect[3]
+
+        # return QRectF(text_rect[0] - wid/6, text_rect[1] - ht/4,
+        # text_rect[2] + wid/3, text_rect[3] + ht/2)
         return QRectF(text_rect[0] - 10, text_rect[1] - 10, text_rect[2] + 20, text_rect[3] + 20)
-        # return QRectF(text_rect[0] - wid/6, text_rect[1] - ht/4, text_rect[2] + wid/3, text_rect[3] + ht/2)
 
     def shape(self):
         path = QPainterPath()
@@ -201,8 +210,9 @@ class Rectangle(Shape):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(self.brush())
         painter.setPen(QPen(Qt.NoPen))
-#        painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
+        # painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
         painter.drawRect(self.boundingRect())
+
 
 class RoundedRectangle(Shape):
     def __init__(self, text_item, color, *args):
@@ -234,27 +244,28 @@ class RoundedRectangle(Shape):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(self.brush())
         painter.setPen(QPen(Qt.NoPen))
-#         painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
+        # painter.setPen(QPen(QColor(0, 0, 0, 255), 0.0, Qt.SolidLine))
         painter.drawRoundedRect(self.boundingRect(), 5.0, 5.0)
 
 
+# from PyQt5.QtWidgets import QGraphicsPixmapItem, QGraphicsTextItem, QGraphicsRectItem
 # class Icon(QGraphicsPixmapItem):
 #     def __init__(self, pixmap, parent):
 #         super(Icon, self).__init(pixmap, parent)
 
 
-
-
+# from PyQt5.QtWidgets import QGraphicsScene, QApplication, QGraphicsView
+# from .view import View
 # def main():
 #     app = QApplication(sys.argv)
 
-#     grview = GraphicsView()
+#     view = View()
 #     scene = QGraphicsScene()
 #     scene.setSceneRect(0, 0, 680, 459)
 #     scene.stickyFocus = True
 
 #     scene.addPixmap(QPixmap('01.png'))
-#     grview.setScene(scene)
+#     view.setScene(scene)
 
 #     st = ShapeType
 #     # Shape = None
@@ -267,9 +278,6 @@ class RoundedRectangle(Shape):
 #     rr_item.add_item(scene, (200.0, 200.0))
 #     c_item = CustomTextItem("this is a text", st.circle)
 #     c_item.add_item(scene, (300.0, 300.0))
-#     grview.fitInView(scene.sceneRect(), Qt.KeepAspectRatio)
-#     grview.show()
+#     view.fitInView(scene.sceneRect(), Qt.KeepAspectRatio)
+#     view.show()
 #     sys.exit(app.exec_())
-
-
-# main()

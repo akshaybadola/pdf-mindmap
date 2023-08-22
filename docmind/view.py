@@ -1,23 +1,14 @@
 import sys
 
-from PyQt5.QtOpenGL import QGL
-from PyQt5.QtOpenGL import QGLWidget
-from PyQt5.QtOpenGL import QGLFormat
-
 from PyQt5.QtCore import Qt, QPointF
-from PyQt5.QtGui import QMouseEvent, QKeyEvent, QPainter
-from PyQt5.QtWidgets import QGraphicsView, QApplication, QGraphicsScene, QGraphicsPixmapItem
+from PyQt5.QtGui import QPainter
+from PyQt5.QtWidgets import QGraphicsView, QGraphicsPixmapItem
 
 # from MMap import MMap
 from .thought import Thought
 from .shape import Shape
 
-# class MMap:
-#     def __init__(self):
-#         pass
-#     def add_thought(self, pos):
-#         print ("trying to add thought at ", pos)
-# class MMLayout(QGridLayout):
+
 class View(QGraphicsView):
     def __init__(self, scene, mmap, parent=None):
         super().__init__(scene, parent)
@@ -244,15 +235,20 @@ class View(QGraphicsView):
         self.scene().update()
 
 
-# app = QApplication(sys.argv)
-# scene = QGraphicsScene()
-# grview = View(scene)
-# grview.setCacheMode(grview.CacheBackground)
-# grview.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
-# grview.setViewport(QGLWidget(QGLFormat(QGL.SampleBuffers)))
-# grview.resize(800, 600)
-# scene.setSceneRect(0, 0, 800, 600)
-# scene.stickyFocus = True
-# grview.fitInView(scene.sceneRect(), Qt.KeepAspectRatio)
-# grview.show()
-# sys.exit(app.exec_())
+# if __name__ == '__main__':
+#     from PyQt5.QtOpenGL import QGL
+#     from PyQt5.QtOpenGL import QGLWidget
+#     from PyQt5.QtOpenGL import QGLFormat
+#     from PyQt5.Widgets import QApplication, QGraphicsScene
+#     app = QApplication(sys.argv)
+#     scene = QGraphicsScene()
+#     grview = View(scene)
+#     grview.setCacheMode(grview.CacheBackground)
+#     grview.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+#     grview.setViewport(QGLWidget(QGLFormat(QGL.SampleBuffers)))
+#     grview.resize(800, 600)
+#     scene.setSceneRect(0, 0, 800, 600)
+#     scene.stickyFocus = True
+#     grview.fitInView(scene.sceneRect(), Qt.KeepAspectRatio)
+#     grview.show()
+#     sys.exit(app.exec_())
