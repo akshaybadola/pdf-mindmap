@@ -9,8 +9,8 @@ from PyQt5.QtGui import QMouseEvent, QKeyEvent, QPainter
 from PyQt5.QtWidgets import QGraphicsView, QApplication, QGraphicsScene, QGraphicsPixmapItem
 
 # from MMap import MMap
-from Thought import Thought
-from Shape import Shape
+from .thought import Thought
+from .shape import Shape
 
 # class MMap:
 #     def __init__(self):
@@ -18,9 +18,9 @@ from Shape import Shape
 #     def add_thought(self, pos):
 #         print ("trying to add thought at ", pos)
 # class MMLayout(QGridLayout):
-class GraphicsView(QGraphicsView):
+class View(QGraphicsView):
     def __init__(self, scene, mmap, parent=None):
-        super(GraphicsView, self).__init__(scene, parent)
+        super().__init__(scene, parent)
         self.setDragMode(QGraphicsView.RubberBandDrag)
         self._isPanning = False
         self._mousePressed = False
@@ -55,7 +55,7 @@ class GraphicsView(QGraphicsView):
     def dragLeaveEvent(self, event):
         self.dragOver = True
         self.update()
- 
+
     def dropEvent(self, event):
         self.dragOver = True
         self.mmap.drag_and_drop(
@@ -83,10 +83,10 @@ class GraphicsView(QGraphicsView):
                     pass
             else:
                 self.mmap.text_uneditable_all()
-            super(GraphicsView, self).mousePressEvent(event)
+            super().mousePressEvent(event)
         else:
             self.mmap.text_uneditable_all()
-            super(GraphicsView, self).mousePressEvent(event)
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self._mousePressedRight:
@@ -106,7 +106,7 @@ class GraphicsView(QGraphicsView):
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - diff.y())
             event.accept()
         else:
-            super(GraphicsView, self).mouseMoveEvent(event)
+            super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         item = self.itemAt(event.pos())
@@ -123,7 +123,7 @@ class GraphicsView(QGraphicsView):
         else:
             self.setCursor(Qt.ArrowCursor)
             self._mousePressed = False
-            super(GraphicsView, self).mouseReleaseEvent(event)
+            super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -134,8 +134,9 @@ class GraphicsView(QGraphicsView):
                 item = self.itemAt(event.pos())
                 if isinstance(item, Shape) or isinstance(item, Thought):
                     item.mouseDoubleClickEvent(event)
-    
+
     def keyPressEvent(self, event):
+        pass
         # I also want shift to show me an insert direction
         if event.key() == Qt.Key_Plus and event.modifiers() & Qt.ControlModifier:
             self.scale(self.zoomInFactor, self.zoomInFactor)
@@ -163,7 +164,7 @@ class GraphicsView(QGraphicsView):
                     items[0].open_pdf()
                     event.accept()
                 else:
-                    super(GraphicsView, self).keyPressEvent(event)
+                    super().keyPressEvent(event)
             elif event.key() == Qt.Key_Space and event.modifiers() & Qt.ShiftModifier:  # recursive expansion
                 self.mmap.hide_thoughts(self.mmap.get_selected(), 'e', recurse=True)
                 event.accept()
@@ -184,7 +185,7 @@ class GraphicsView(QGraphicsView):
                     items[0].set_editable(True)
                     event.accept()
                 else:
-                    super(GraphicsView, self).keyPressEvent(event)
+                    super().keyPressEvent(event)
             elif event.key() == Qt.Key_D:
                 thoughts = self.mmap.get_selected()
                 if thoughts:
@@ -206,7 +207,7 @@ class GraphicsView(QGraphicsView):
                 event.accept()
         # This is when either the QGraphicsTextItem or the QLineEdit have focus
         else:
-            super(GraphicsView, self).keyPressEvent(event)
+            super().keyPressEvent(event)
 
 
     def keyReleaseEvent(self, event):
@@ -218,7 +219,7 @@ class GraphicsView(QGraphicsView):
                 self._isPanning = False
                 self.setCursor(Qt.ArrowCursor)
         else:
-            super(GraphicsView, self).keyPressEvent(event)
+            super().keyPressEvent(event)
 
     def wheelEvent(self, event):
         # Set Anchors
@@ -245,7 +246,7 @@ class GraphicsView(QGraphicsView):
 
 # app = QApplication(sys.argv)
 # scene = QGraphicsScene()
-# grview = GraphicsView(scene)
+# grview = View(scene)
 # grview.setCacheMode(grview.CacheBackground)
 # grview.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
 # grview.setViewport(QGLWidget(QGLFormat(QGL.SampleBuffers)))

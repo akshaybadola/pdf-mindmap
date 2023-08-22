@@ -1,5 +1,6 @@
 import json
 
+
 def save_file(data, filename, indent=True, sort=False, oneLine=False):
     f = open(filename, 'w')
     if indent:
@@ -8,11 +9,13 @@ def save_file(data, filename, indent=True, sort=False, oneLine=False):
         f.write(json.dumps(data, sort_keys=sort))
     f.close()
 
+
 def load_file(filename):
     try:
         file = open(filename)
         t = file.read()
         file.close()
         return json.loads(t)
-    except:
+    except Exception as e:
+        print(f"Error occured while opening file {e}")
         return {}

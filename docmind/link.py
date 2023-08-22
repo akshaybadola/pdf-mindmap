@@ -8,7 +8,8 @@ from PyQt5.QtWidgets import QGraphicsLineItem, QGraphicsItem, QGraphicsDropShado
 # colors for each parent/child relationship, perhaps lighter?
 # Also, have the same level of line thickness for each member
 # of hierarchy
-from Thought import Thought
+from .thought import Thought
+
 
 # start_item, end_item are Thought instances
 class Arrow(QGraphicsLineItem):

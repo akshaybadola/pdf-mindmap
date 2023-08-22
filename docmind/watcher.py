@@ -2,7 +2,6 @@ import os
 import glob
 import pickle
 import hashlib
-import numpy as np
 from shutil import copyfile
 from functools import reduce
 from collections import defaultdict
@@ -36,7 +35,7 @@ class Watcher(object):
 
         dd_files.update(zip(pdfs, [(i, j[0], j[1]) for i, j in zip(inodes, times)]))
         dd_nodes.update(zip(inodes, [(i, j[0], j[1]) for i, j in zip(pdfs, times)]))
-        
+
         return dd_files, dd_nodes
 
 
@@ -83,7 +82,7 @@ class Watcher(object):
             # What to do with deleted files?
             pass
 
-        
+
     def __md5(self, fname):
         hash_md5 = hashlib.md5()
         with open(fname, "rb") as f:
@@ -106,7 +105,7 @@ class Watcher(object):
             suff = '.pkl.bak'
         else:
             suff = '.pkl'
-            
+
         for i, fname in enumerate(self.filenames):
             with open(os.path.join(self.store_dir, fname + suff), 'rb') as f:
                 self.proc_data[i] = pickle.load(f)
@@ -152,7 +151,7 @@ class Watcher(object):
                     p = os.path.join(self.store_dir, fname)
                     if os.path.exists(p + '.pkl.bak'):
                         os.remove(p + '.pkl.bak')
-                    
+
                 # Simply rebuild index for now
                 print("Some files are missing!\n")
                 print("And the backups are also not there! First run?")

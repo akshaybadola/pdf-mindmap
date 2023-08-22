@@ -4,93 +4,103 @@ import argparse
 import configparser
 from pathlib import Path
 
-from watcher.watcher import Watcher
-
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QGraphicsView, QApplication, QGraphicsScene, QStatusBar, QGridLayout
-from GraphicsView import GraphicsView
-
+from PyQt5.QtWidgets import (QGraphicsView, QApplication, QMainWindow, QGraphicsScene,
+                             QStatusBar, QGridLayout, QAction)
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtOpenGL import QGL, QGLWidget, QGLFormat
 
-from MMap import MMap, MyLineEdit, StatusBar
+from docmind import Scene, LineEdit, StatusBar, View
 
-# Each map can be linked to a scene
-class MindMap(QGraphicsScene):
-    def __init__(self, root_dir=None, store_dir=None, filename=None):
-        super(MindMap, self).__init__()
-        self.root_dir = root_dir
-        self.store_dir = store_dir
-        self.filename = filename
-        # Create a new watcher instance which should actually be for each Sheet
-        self.watcher = Watcher(self.root_dir, self.store_dir)
-        self.create_new_map()
-        self.monitor()
-        self.hashes = {}
-        
-    def monitor(self):
-        pdfs, added = self.watcher.check()
-        if added:
-            self.files_hashes = self.watcher.proc_data[0]  # file -> (hash, metadata)
-            self.hashes_files = self.watcher.proc_data[1]  # hash -> (file, metadata)
 
-        new_hashes = set(self.hashes_files.keys())
-        
-        
+class AppWindow(QMainWindow):
+    def __init__(self, view, title):
+        super().__init__()
+        self._view = view
+        self._title = title
+        self._actions = {}
+        self.initUI(view)
 
-    def exit_app(self):
-        # check if saving
-        # if not:
+    def _add_action(self, name, key_seq, func):
+        self._actions[name] = QAction(name, self)
+        self._actions[name].setShortcut(key_seq)
+        self._actions[name].triggered.connect(func)
+        self.addAction(self._actions[name])
+
+    def initUI(self, view):
+        self.setCentralWidget(view)
+
+        self._add_action("Zoom in", "Ctrl++", self.zoom_in)
+        self._add_action("Zoom out", "Ctrl+-", self.zoom_out)
+        self._add_action("Save File", "Ctrl+x,Ctrl+c", self.save_file)
+
+        self.setWindowTitle(self._title)
+        self.setGeometry(100, 100, 1200, 800)
+
+    def zoom_in(self):
+        # Add code here to zoom in your QGraphicsView
+        print('Zoom In')
+
+    def zoom_out(self):
+        # Add code here to zoom out your QGraphicsView
+        print('Zoom Out')
+
+    def save_file(self):
+        # Add code here to zoom out your QGraphicsView
+        print('Saving File')
+
+    def abort(self):
+        # pass abort to children
         pass
 
-    def create_new_map(self):
-        if self.root_dir:
-            self.create_tree()
-            self.mmap = MMap(self, dirtree=self.thought_tree)
-        elif self.filename:
-            self.mmap = MMap(self, filename=self.filename)
-        else:
-            self.mmap = MMap(self)
-
-    def create_tree(self):
-        self.files = []
-        self.thought_tree = {}
-        for root, dirs, files_ in os.walk(self.root_dir, topdown=True):
-            self.files.append((root, [f for f in files_ if '.pdf' in f]))
-        self.gen_tree()
-
-    def gen_tree(self):
-        # gen_tree I think is independent of everything else
-        index = 0
-        root_index = index
-        root_thought = self.files[root_index]
-        self.thought_tree[0] = {'index': index, 'name': root_thought[0],
-                                'parent': None, 'children': [], 'files': root_thought[1]}
-
-        while root_index < len(self.files):
-            root_thought = (self.thought_tree[root_index]['name'], self.thought_tree[root_index]['files'])
-            for f in self.files:
-                if os.path.dirname(f[0]) == root_thought[0]:
-                    index += 1
-                    self.thought_tree[index] = {'index': index, 'name': f[0],
-                                                'parent': root_index, 'children': [], 'files': f[1]}
-                    self.thought_tree[root_index]['children'].append(index)
-            root_index += 1
+    def quit(self):
+        # Quit the window
+        pass
 
 
-# The root dir and everything should be integrated here
-if __name__ == "__main__":
+def create_view(root_dir, store_dir, filename):
+    """Create the :class:`QGraphicsView` view that'll hold the mind maps
+
+    Args:
+        root_dir: Root directory to monitor pdf files
+        store_dir: Application store directory
+        filename: Optional filename to open
+
+    """
+    scene = Scene(root_dir=root_dir, store_dir=store_dir, filename=filename)
+    view = View(scene, scene.mmap)
+    view.setCacheMode(view.CacheBackground)
+    view.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+    view.setViewport(QGLWidget(QGLFormat(QGL.SampleBuffers)))
+    view.resize(1200, 800)
+    line_edit = LineEdit(view)
+    status_bar = QStatusBar(view)
+    scene.mmap.init_widgets(line_edit, status_bar)
+    # view.horizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+    # view.verticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+    # mindmap.setSceneRect(0, 0, 1200, 800)
+    scene.stickyFocus = True
+    view.fitInView(scene.sceneRect(), Qt.KeepAspectRatio)
+    # view.show()
+    return view
+
+
+def main():
+    default_config_dir = Path.joinpath(Path.home().absolute(), ".mindmap")
     parser = argparse.ArgumentParser(description='Mindmap for documents')
-    parser.add_argument('--root-dir', '-r', type=str, default='',
-                        help='The root directory from where to monitor pdf files')
-    parser.add_argument('--store-dir', '-s', type=str, default='',
-                        help='Store the application data in this directory. Defaults to $HOME/.mindmap')
-    parser.add_argument('--file', '-f', type=str, default='',
-                        help='Open this file for initial editing')
+    parser.add_argument("-c", "--config-dir", type=str,
+                        default=str(default_config_dir),
+                        help="Load this config file")
+    parser.add_argument("--root-dir", "-r", type=str, default=str(default_config_dir.joinpath("pdfs")),
+                        help="The root directory from where to monitor pdf files")
+    parser.add_argument("--store-dir", "-s", type=str, default=str(default_config_dir.joinpath("store")),
+                        help="Store the application data in this directory. Defaults to $HOME/.mindmap")
+    parser.add_argument("--file", "-f", type=str, default="", help="Open this saved file")
     args = parser.parse_args()
 
-    root_dir = None
     filename = None
-    store_dir = None
+    config_dir = Path(args.config_dir)
+    store_dir = Path(args.store_dir)
     if os.path.exists(args.root_dir):
         print("Trying to populate the thought tree from root dir")
         root_dir = Path(args.root_dir)
@@ -99,29 +109,22 @@ if __name__ == "__main__":
         if os.path.exists(args.file):
             filename = Path(args.file)
     else:
+        root_dir = None
         print("No root directory or file given. Creating empty sheet.")
 
-    if not args.store_dir:
-        store_dir = Path.joinpath(Path.home(), Path(".mindmap"), Path(args.root_dir.replace('/', '_')))
-    else:
-        store_dir = Path(args.store_dir)
+    if not os.path.exists(config_dir):
+        Path.mkdir(config_dir)
     if not os.path.exists(store_dir):
         Path.mkdir(store_dir)
 
     app = QApplication(sys.argv)
-    mm = MindMap(root_dir=root_dir, store_dir=store_dir, filename=filename)
-    grview = GraphicsView(mm, mm.mmap)
-    grview.setCacheMode(grview.CacheBackground)
-    grview.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
-    grview.setViewport(QGLWidget(QGLFormat(QGL.SampleBuffers)))
-    grview.resize(1200, 800)
-    line_edit = MyLineEdit(grview)
-    status_bar = QStatusBar(grview)
-    mm.mmap.init_widgets(line_edit, status_bar)
-    # grview.horizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-    # grview.verticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)    
-    # mm.setSceneRect(0, 0, 1200, 800)
-    mm.stickyFocus = True
-    grview.fitInView(mm.sceneRect(), Qt.KeepAspectRatio)
-    grview.show()
+    # TODO: This view and mindmap should be initialized somewhere else
+    view = create_view(root_dir, store_dir, filename)
+    window = AppWindow(view, "Mind Map")
+    window.show()
+    # import ipdb; ipdb.set_trace()
     sys.exit(app.exec_())
+
+
+if __name__ == '__main__':
+    main()
