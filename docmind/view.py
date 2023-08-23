@@ -4,7 +4,6 @@ from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPainter
 from PyQt5.QtWidgets import QGraphicsView, QGraphicsPixmapItem
 
-# from MMap import MMap
 from .thought import Thought
 from .shape import Shape
 
@@ -22,7 +21,6 @@ class View(QGraphicsView):
         # Zoom Factor
         self.zoomInFactor = 1.25
         self.zoomOutFactor = 1 / self.zoomInFactor
-        # self.mmap = MMap(scene)
 
     def resizeEvent(self, event):
         self.mmap.reposition_status_bar(self.geometry())
@@ -81,7 +79,8 @@ class View(QGraphicsView):
 
     def mouseMoveEvent(self, event):
         if self._mousePressedRight:
-            print(self.mapToScene(event.pos()), event.pos().x(), event.pos().y(), self._dragPos.x(), self._dragPos.y())
+            print(self.mapToScene(event.pos()), event.pos().x(), event.pos().y(),
+                  self._dragPos.x(), self._dragPos.y())
             len(self._positions)
             diff = self.mapToScene(event.pos()) - self._dragPos
             if (self._selected):

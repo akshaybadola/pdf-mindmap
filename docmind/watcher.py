@@ -24,19 +24,21 @@ class Watcher(object):
     def __fstat(self, x):
         return x[1], (x[-1], x[-2])
 
-    def __build_indices(self, path):
+    def __build_indices(self, path) -> tuple[dict, dict]:
         pdfs = glob.glob(str(path) + '/**/*.pdf', recursive=True)
         filestats = list(zip(*[self.__fstat(os.stat(pdf)) for pdf in pdfs]))
-        inodes = filestats[0]
-        times = filestats[1]    # ctime, mtimes
+        if filestats:
+            inodes = filestats[0]
+            times = filestats[1]    # ctime, mtimes
 
-        dd_files = defaultdict(list)
-        dd_nodes = defaultdict(list)
+            dd_files = defaultdict(list)
+            dd_nodes = defaultdict(list)
 
-        dd_files.update(zip(pdfs, [(i, j[0], j[1]) for i, j in zip(inodes, times)]))
-        dd_nodes.update(zip(inodes, [(i, j[0], j[1]) for i, j in zip(pdfs, times)]))
-
-        return dd_files, dd_nodes
+            dd_files.update(zip(pdfs, [(i, j[0], j[1]) for i, j in zip(inodes, times)]))
+            dd_nodes.update(zip(inodes, [(i, j[0], j[1]) for i, j in zip(pdfs, times)]))
+            return dd_files, dd_nodes
+        else:
+            return {}, {}
 
 
     def __update_indices(self, index_files, index_inodes, path):
@@ -124,7 +126,6 @@ class Watcher(object):
             with open(os.path.join(self.store_dir, fname + suff), 'wb') as f:
                 pickle.dump(self.proc_data[i], f)
 
-
     def __load_files(self):
         self.first_run = False
         saves = [os.path.exists(os.path.join(self.store_dir, f + '.pkl')) for f in self.filenames]
@@ -169,7 +170,6 @@ class Watcher(object):
             self.__read_files()
             return True
 
-
     # Get initial data and then watch for changes
     # Readability is hampered by self.first_run as its usage
     # is not intuitive
@@ -177,7 +177,7 @@ class Watcher(object):
         added = False
         new_pdfs = set(glob.glob(self.watch_dir + '/**/*.pdf', recursive=True))
         # Only if it's first_run
-        if self.first_run:
+        if self.first_run and new_pdfs:
             added = True
             # If could not load files from either regular pkl or pkl.bak
             if not self.__load_files():
@@ -186,7 +186,7 @@ class Watcher(object):
         else:
             added = False
 
-        if not old_pdfs:
+        if not old_pdfs and self.proc_data[0] and self.proc_data[1]:
             old_pdfs = set(self.proc_data[0].keys())
             old_hashes = set(self.proc_data[1].keys())
 

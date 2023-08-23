@@ -11,88 +11,7 @@ from .link import Arrow, Link
 from .shape import Shape, Shapes
 from .io import load_file, save_file
 
-# Priorities:
-# CRASH: if I delete some children while in cycle_ and then try to move in opposite movement direction
-#              FIXED with adjusting self.cycle_items
-# CRASH: After partial expand, navigation to child nodes to children and again trying to do partial expand
-#              in orthogonal direction causes a crash
-#              FIXED with the adjustment to hide_thoughts where if expand_leaves is false, then the node's
-#              directional expand flag is set to false if all children are leaves
-# 1. Maybe change the expand and collapse behaviours
-#     - Space collapses expands all nodes except k-th level (leaves or perhaps one level up from leaves)
-#     - Shift_Space collapses and expands all nodes
-#     - Control_direction collapses and expands only one level
-# 4. Fix expansion, collapse
-#     - Hidden and expand flags are not correctly working w.r.t. navigation (though mostly working)
-#     - Mouse expand will only work if there's an indicator that there's something to expand
-#     - Expansion more robust with checks such that if all directions are 'd', then
-#       expand is 'd'
-#     -  Add Expansion, contraction by mouse.
-# 2. Navigation and expansion although they work fine, sometimes the keystrokes don't
-#     do what is expected of them (require more than one keypress or navigate to disconnected nodes)
 
-
-# Most of it seems to be working fine now. Maybe a few bugs are still there, we can deal with them later.
-#
-# 0. File Hashes and directory watching
-# 1. All prompts and information in the status bar
-# 1. Placement while populating tree is still a bit messy and there's no adjust_thoughts
-#     implmentation.
-# 5. Partial expand automatically if the hidden node contains a search term
-#     - Expand alongside siblings? Or just the node?
-# 2. Left, Right, Up, Down are also bound to scrolling the GraphicsView
-#     - Must change those to something else.
-# 3. Alignment while re-placing children is incorrect if added anywhere, either modify place_child
-#     or write a new function for it.
-#     - Alignment is also incorrect for new children if the width of the window is too long
-#       Must adjust.
-# 4. If a node has too many files, then perhaps show only a few but scroll through all
-#     maybe ability to search through them also selectively
-
-
-# 1. Add a "star" to a file, perhaps of different colors (importance or groupings)
-#     and should be able to highlight the relevant starred files, while either
-#     hiding others or making them transluscent but still available
-# 4. Basic emacs like key-bindings for the text editor
-# 3. Do I need node resize?
-# b) Add a child to each pdf node which by default is always collapsed but
-#     expands on demand(with animation) as the node is selected and shows
-#     the description (which may or may not be there) for that file
-# 1. Customizable key-mappings, with a template to automatically
-#     do it from a config file
-
-
-# 10. Change all dicts to enums?
-# 1. Links between nodes other than with a parent child relationship
-#     And a way to show/hide them and navigate between them
-# 2. *Color hierarchy. I'm not ready to put color choosers yet there
-#      - Colors other than red are there now, but they're still bound to shape
-# 3. Children should snap close to each other
-# 4. An overall method to adjust everything according to some rules
-# 6. Also a way to move children from one side to another (with animation)
-# 9. Panning, zoom (wtf is that and how to handle wrt saves and restore)
-# 10. Animation while expansion and contraction
-# 14. *Should insert new nodes away from other nodes as well and not
-#       just nodes in family (minimize overlap while insertion)
-#       - In fact it can be that the childrens' position is fixed just like
-#         the thoughts' size is fixed corresponding to the text that they have
-#       - I'm thinking of an animation while reordering siblings, like in tabs
-# 17. Splines
-# 19. Perhaps expand with just the movement? and expand and collapse on demand?
-# 20. Better looking nodes. Currently they look like shit
-#       - They actually look fairly ok now. I have to add animations however.
-# 21. Append a node to the current level of hierarchy
-#      - I think that can be accomplished fairly easily as the node would have to be
-#        some other node's child
-# 23. There should be an option to show the directory tree k-level deep, i.e., show
-#       till kth-level expanded and the rest collapsed.
-# 24. Cycle items should only cycle between visible items and not hidden ones (Is this needed now?)
-# 25. Tabular format for all the pdfs (or selected pdfs or families) for mendeley like environment
-#       in QtQuick
-# 26. Pdf previews in tiny windows which are children of the top level window or ideally, the scene
-
-
-# TODO: I'm not sure the object hierarchy is correct
 class MMap:
     def __init__(self, scene, filename=None, dirtree=None):
         self.scene = scene
@@ -181,7 +100,8 @@ class MMap:
         data['thoughts'] = []
         for t in self.thoughts.values():
             data['thoughts'].append(t.serialize())
-        data['links'] = list(zip(list(self.links.keys()), [l.direction for l in self.links.values()]))
+        data['links'] = list(zip(list(self.links.keys()),
+                                 [link.direction for link in self.links.values()]))
         save_file(data, filename)
         self.status_bar.showMessage("Saved to file" + filename, 0)
 
@@ -197,8 +117,8 @@ class MMap:
         for t in data['thoughts']:
             self.add_thought(QPointF(t['coords'][0], t['coords'][1]), data=t)  # will this work? I don't think so
         links_data = data['links']
-        for l in links_data:
-            self.add_link(l[0][0], l[0][1], l[1])
+        for link in links_data:
+            self.add_link(link[0][0], link[0][1], link[1])
         for t in self.thoughts.keys():
             for lk in self.links.keys():
                 if t in lk and self.thoughts[t].hidden:
@@ -250,10 +170,10 @@ class MMap:
 
         thought.remove()
         self.thoughts.pop(ind)
-        links_to_remove = [l for l in self.links.keys() if ind in l]
-        for l in links_to_remove:
-            self.scene.removeItem(self.links[l])
-            self.links.pop(l)
+        links_to_remove = [link for link in self.links.keys() if ind in link]
+        for link in links_to_remove:
+            self.scene.removeItem(self.links[link])
+            self.links.pop(link)
 
     def add_link(self, t1_ind, t2_ind, direction=None):
         if not direction:

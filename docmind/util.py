@@ -1,8 +1,12 @@
+from pathlib import Path
 from enum import Enum, unique
 
 
 class Color(Enum):
     pass
+
+
+PathLike = Path | str
 
 
 def linspace(a, b, num_divs):

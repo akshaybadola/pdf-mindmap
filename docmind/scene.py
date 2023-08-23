@@ -1,14 +1,30 @@
+from typing import Optional
 import os
 
 from PyQt5.QtWidgets import QGraphicsScene
 
 from .mmap import MMap
 from .watcher import Watcher
+from .util import PathLike
 
 
-# Each map can be linked to a scene
 class Scene(QGraphicsScene):
-    def __init__(self, root_dir=None, store_dir=None, filename=None):
+    """A scene to hold a mindmap. Scene is separate from the mindmap
+    so that a new mindmap can be placed on to it easily if required.
+
+    """
+
+    def __init__(self, root_dir: Optional[PathLike] = None,
+                 store_dir: Optional[PathLike] = None,
+                 filename: Optional[PathLike] = None):
+        """Initialize the MindMap Scene
+
+        Args:
+            root_dir: Root directory for PDF files
+            store_dir: Root directory to store the mindmap state
+            filename: Filename to load
+
+        """
         super().__init__()
         self.root_dir = root_dir
         self.store_dir = store_dir

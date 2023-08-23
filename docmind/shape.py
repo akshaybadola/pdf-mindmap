@@ -74,13 +74,13 @@ class Shape(QGraphicsEllipseItem):
         gd = QRadialGradient(self.boundingRect().center(), self.boundingRect().width())
         grad_colors = []
         if brush_type == 'dark':
-            grad_colors.append([c + m * 180 for c, m in zip(base_color, mask)])
-            grad_colors.append([c + m * 20 for c, m in zip(base_color, mask)])
+            grad_colors.append([int(c + m * 180) for c, m in zip(base_color, mask)])
+            grad_colors.append([int(c + m * 20) for c, m in zip(base_color, mask)])
         elif brush_type == 'regular':
-            grad_colors.append([c + m * 20 for c, m in zip(base_color, mask)])
-            grad_colors.append([c + m * 60 for c, m in zip(base_color, mask)])
-            grad_colors.append([c + m * 100 for c, m in zip(base_color, mask)])
-            grad_colors.append([c + m * 200 for c, m in zip(base_color, mask)])
+            grad_colors.append([int(c + m * 20) for c, m in zip(base_color, mask)])
+            grad_colors.append([int(c + m * 60) for c, m in zip(base_color, mask)])
+            grad_colors.append([int(c + m * 100) for c, m in zip(base_color, mask)])
+            grad_colors.append([int(c + m * 200) for c, m in zip(base_color, mask)])
 
         levels = len(grad_colors)
         positions = linspace(0, 1, levels)
